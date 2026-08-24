@@ -18,7 +18,7 @@ const recentDocuments = [
   { name: "Data Mining.pdf", type: "pdf" },
 ]
 
-type Page = "chat" | "documents"
+type Page = "chat" | "documents" | "collections"
 
 interface SidebarProps {
   activePage: Page
@@ -75,6 +75,8 @@ export default function Sidebar({
           <SidebarItem
             icon={<FolderOpen size={18} />}
             label="Collections"
+            active={activePage === "collections"}
+            onClick={() => onNavigate("collections")}
           />
 
           <SidebarItem

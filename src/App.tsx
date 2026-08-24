@@ -3,8 +3,9 @@ import { useState } from "react"
 import Sidebar from "./components/layout/Sidebar"
 import MainChat from "./components/layout/MainChat"
 import DocumentsPage from "./pages/DocumentsPage"
+import CollectionsPage from "./pages/CollectionsPage"
 
-type Page = "chat" | "documents"
+type Page = "chat" | "documents" | "collections"
 
 function App() {
   const [page, setPage] = useState<Page>("chat")
@@ -18,8 +19,10 @@ function App() {
 
       {page === "chat" ? (
         <MainChat />
-      ) : (
+      ) : page === "documents" ?(
         <DocumentsPage />
+      ) : (
+        <CollectionsPage />
       )}
     </div>
   )
