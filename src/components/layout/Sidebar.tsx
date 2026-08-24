@@ -18,7 +18,17 @@ const recentDocuments = [
   { name: "Data Mining.pdf", type: "pdf" },
 ]
 
-export default function Sidebar() {
+type Page = "chat" | "documents"
+
+interface SidebarProps {
+  activePage: Page
+  onNavigate: (page: Page) => void
+}
+
+export default function Sidebar({
+  activePage,
+  onNavigate,
+}: SidebarProps) {
   return (
     <aside className="relative flex h-screen w-[280px] shrink-0 overflow-hidden border-r border-white/[0.07] bg-[#1d1d20]">
       {/* Ambient glow */}
@@ -37,7 +47,10 @@ export default function Sidebar() {
 
         {/* New chat */}
         <div className="px-5 pt-8">
-          <button className="flex w-full items-center gap-2 rounded-xl bg-[#8E3A59] px-4 py-3.5 text-sm font-medium text-white shadow-[0_8px_24px_rgba(142,58,89,0.18)] transition hover:bg-[#9d4564]">
+          <button
+            onClick={() => onNavigate("chat")}
+            className="flex w-full items-center gap-2 rounded-xl bg-[#8E3A59] px-4 py-3.5 text-sm font-medium text-white shadow-[0_8px_24px_rgba(142,58,89,0.18)] transition hover:bg-[#9d4564]"
+          >
             <Plus size={18} strokeWidth={2} />
             New Chat
           </button>
@@ -48,12 +61,15 @@ export default function Sidebar() {
           <SidebarItem
             icon={<MessageSquare size={18} />}
             label="Chat"
-            active
+            active={activePage === "chat"}
+            onClick={() => onNavigate("chat")}
           />
 
           <SidebarItem
             icon={<FileText size={18} />}
             label="Documents"
+            active={activePage === "documents"}
+            onClick={() => onNavigate("documents")}
           />
 
           <SidebarItem
@@ -144,13 +160,16 @@ function SidebarItem({
   icon,
   label,
   active = false,
+  onClick,
 }: {
   icon: React.ReactNode
   label: string
   active?: boolean
+  onClick?: () => void
 }) {
   return (
     <button
+      onClick={onClick}
       className={[
         "mb-1.5 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition",
         active
