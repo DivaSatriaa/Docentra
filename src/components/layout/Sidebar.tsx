@@ -24,11 +24,13 @@ type Page = "chat" | "documents" | "collections" | "history"
 interface SidebarProps {
   activePage: Page
   onNavigate: (page: Page) => void
+  onNewChat: () => void
 }
 
 export default function Sidebar({
   activePage,
   onNavigate,
+  onNewChat,
 }: SidebarProps) {
   return (
     <aside className="relative flex h-screen w-[280px] shrink-0 overflow-hidden border-r border-white/[0.07] bg-[#1d1d20]">
@@ -49,7 +51,7 @@ export default function Sidebar({
         {/* New chat */}
         <div className="px-5 pt-8">
           <button
-            onClick={() => onNavigate("chat")}
+            onClick={onNewChat}
             className="flex w-full items-center gap-2 rounded-xl bg-[#8E3A59] px-4 py-3.5 text-sm font-medium text-white shadow-[0_8px_24px_rgba(142,58,89,0.18)] transition hover:bg-[#9d4564]"
           >
             <Plus size={18} strokeWidth={2} />
@@ -109,8 +111,8 @@ export default function Sidebar({
                 className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2.5 text-left transition hover:bg-white/[0.04]"
               >
                 <FileTypeIcon
-                    type={document.type}
-                    size={20}
+                  type={document.type}
+                  size={20}
                 />
 
                 <span className="truncate text-[12px] text-white/65">
@@ -188,28 +190,5 @@ function SidebarItem({
       {icon}
       <span>{label}</span>
     </button>
-  )
-}
-
-function DocumentIcon({ type }: { type: string }) {
-  const isPdf = type === "pdf"
-
-  return (
-    <div
-      className={[
-        "flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
-        isPdf ? "bg-[#D83B47]/15" : "bg-[#4285F4]/15",
-      ].join(" ")}
-    >
-      <FileText
-        size={13}
-        strokeWidth={1.8}
-        className={
-          isPdf
-            ? "text-[#ff5c68]"
-            : "text-[#5fa3ff]"
-        }
-      />
-    </div>
   )
 }

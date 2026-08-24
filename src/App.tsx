@@ -10,19 +10,26 @@ type Page = "chat" | "documents" | "collections" | "history"
 
 function App() {
   const [page, setPage] = useState<Page>("chat")
+  const [chatKey, setChatKey] = useState(0)
+
+  function handleNewChat() {
+    setPage("chat")
+    setChatKey((current) => current + 1)
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#18181b] text-[#F2F2F2]">
       <Sidebar
         activePage={page}
         onNavigate={setPage}
+        onNewChat={handleNewChat}
       />
 
       {page === "chat" ? (
-        <MainChat />
-      ) : page === "documents" ?(
+        <MainChat key={chatKey} />
+      ) : page === "documents" ? (
         <DocumentsPage />
-      ) : page === "collections" ?(
+      ) : page === "collections" ? (
         <CollectionsPage />
       ) : (
         <HistoryPage />
