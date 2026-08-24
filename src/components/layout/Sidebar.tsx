@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 
 import logo from "../../assets/docentra-logo.png"
+import FileTypeIcon from "../common/FileTypeIcon"
 
 const recentDocuments = [
   { name: "Machine Learning.pdf", type: "pdf" },
@@ -18,7 +19,7 @@ const recentDocuments = [
   { name: "Data Mining.pdf", type: "pdf" },
 ]
 
-type Page = "chat" | "documents" | "collections"
+type Page = "chat" | "documents" | "collections" | "history"
 
 interface SidebarProps {
   activePage: Page
@@ -82,6 +83,8 @@ export default function Sidebar({
           <SidebarItem
             icon={<History size={18} />}
             label="History"
+            active={activePage === "history"}
+            onClick={() => onNavigate("history")}
           />
         </nav>
 
@@ -105,7 +108,10 @@ export default function Sidebar({
                 key={document.name}
                 className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2.5 text-left transition hover:bg-white/[0.04]"
               >
-                <DocumentIcon type={document.type} />
+                <FileTypeIcon
+                    type={document.type}
+                    size={20}
+                />
 
                 <span className="truncate text-[12px] text-white/65">
                   {document.name}

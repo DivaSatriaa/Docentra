@@ -4,8 +4,9 @@ import Sidebar from "./components/layout/Sidebar"
 import MainChat from "./components/layout/MainChat"
 import DocumentsPage from "./pages/DocumentsPage"
 import CollectionsPage from "./pages/CollectionsPage"
+import HistoryPage from "./pages/HistoryPage"
 
-type Page = "chat" | "documents" | "collections"
+type Page = "chat" | "documents" | "collections" | "history"
 
 function App() {
   const [page, setPage] = useState<Page>("chat")
@@ -21,8 +22,10 @@ function App() {
         <MainChat />
       ) : page === "documents" ?(
         <DocumentsPage />
-      ) : (
+      ) : page === "collections" ?(
         <CollectionsPage />
+      ) : (
+        <HistoryPage />
       )}
     </div>
   )

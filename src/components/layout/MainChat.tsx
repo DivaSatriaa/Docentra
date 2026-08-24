@@ -1,31 +1,37 @@
 import {
+  AlignLeft,
   ArrowUp,
   ChevronDown,
   FileText,
+  GitCompareArrows,
   Globe2,
+  Lightbulb,
+  ListChecks,
   Search,
   Sparkles,
   Upload,
 } from "lucide-react"
 
+import FileTypeIcon from "../common/FileTypeIcon"
+
 const prompts = [
   {
-    icon: "✦",
+    icon: ListChecks,
     title: "Summarize",
     subtitle: "this document",
   },
   {
-    icon: "◇",
+    icon: Lightbulb,
     title: "Explain key",
     subtitle: "concepts",
   },
   {
-    icon: "◌",
+    icon: GitCompareArrows,
     title: "Compare",
     subtitle: "these files",
   },
   {
-    icon: "✧",
+    icon: AlignLeft,
     title: "Find important",
     subtitle: "data",
   },
@@ -35,40 +41,34 @@ const documents = [
   {
     name: "Machine Learning.pdf",
     size: "32 MB",
-    type: "PDF",
-    color: "text-[#ff5964]",
+    type: "pdf",
   },
   {
     name: "Sistem Pakar.docx",
     size: "1.2 MB",
-    type: "DOCX",
-    color: "text-[#5da7ff]",
+    type: "docx",
   },
   {
     name: "Data Mining.pdf",
     size: "18 MB",
-    type: "PDF",
-    color: "text-[#ff5964]",
+    type: "pdf",
   },
 ]
 
 export default function MainChat() {
   return (
     <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#18181b]">
-    {/* Ambient lighting */}
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        {/* Main top-center light */}
-        <div className="absolute left-1/2 top-[-180px] h-[520px] w-[760px] -translate-x-1/2 rounded-full bg-[#8E3A59]/[0.13] blur-[150px]" />
+      {/* Ambient lighting */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute left-1/2 top-[-180px] h-[520px] w-[760px] -translate-x-1/2 rounded-full bg-[#8E3A59]/[0.10] blur-[150px]" />
 
-        {/* Subtle inner light */}
-        <div className="absolute left-1/2 top-[-40px] h-[260px] w-[520px] -translate-x-1/2 rounded-full bg-[#F2F2F2]/[0.025] blur-[110px]" />
+        <div className="absolute left-1/2 top-[-40px] h-[260px] w-[520px] -translate-x-1/2 rounded-full bg-[#F2F2F2]/[0.02] blur-[110px]" />
 
-        {/* Faint lower purple atmosphere */}
-        <div className="absolute bottom-[-260px] left-1/2 h-[500px] w-[700px] -translate-x-1/2 rounded-full bg-[#5C1F45]/[0.06] blur-[170px]" />
+        <div className="absolute bottom-[-260px] left-1/2 h-[500px] w-[700px] -translate-x-1/2 rounded-full bg-[#5C1F45]/[0.055] blur-[170px]" />
 
-        {/* Very subtle side atmosphere */}
-        <div className="absolute right-[-220px] top-[25%] h-[420px] w-[420px] rounded-full bg-[#8E3A59]/[0.035] blur-[150px]" />
-        </div>
+        <div className="absolute right-[-220px] top-[25%] h-[420px] w-[420px] rounded-full bg-[#8E3A59]/[0.03] blur-[150px]" />
+      </div>
+
       {/* Top bar */}
       <header className="relative z-10 flex h-[68px] shrink-0 items-center justify-between border-b border-white/[0.07] px-8">
         <button className="flex items-center gap-1.5 text-[14px] font-medium text-white/85 transition hover:text-white">
@@ -76,7 +76,7 @@ export default function MainChat() {
           <ChevronDown
             size={14}
             strokeWidth={1.8}
-            className="text-white/45"
+            className="text-white/40"
           />
         </button>
 
@@ -90,9 +90,9 @@ export default function MainChat() {
 
           <button
             aria-label="Profile"
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-[#8E3A59]/50 bg-[#8E3A59]/10 shadow-[0_0_18px_rgba(142,58,89,0.12)]"
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-[#8E3A59]/50 bg-[#8E3A59]/10"
           >
-            <span className="h-3.5 w-3.5 rounded-full bg-[#D34778] shadow-[0_0_12px_rgba(211,71,120,0.75)]" />
+            <span className="h-3.5 w-3.5 rounded-full bg-[#D34778]" />
           </button>
         </div>
       </header>
@@ -104,9 +104,8 @@ export default function MainChat() {
           <section className="text-center">
             <div className="mb-2 flex items-center justify-center gap-2.5">
               <Sparkles
-                size={29}
+                size={27}
                 strokeWidth={1.7}
-                fill="currentColor"
                 className="text-[#D34778]"
               />
 
@@ -115,26 +114,26 @@ export default function MainChat() {
               </h1>
             </div>
 
-            <p className="text-[15px] text-white/50">
+            <p className="text-[15px] text-white/48">
               Ask anything about your documents.
             </p>
           </section>
 
           {/* Composer */}
-          <section className="mx-auto mt-7 w-full max-w-[920px] rounded-[20px] border border-white/[0.12] bg-[#2a282b]/90 p-3 shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-sm">
+          <section className="mx-auto mt-7 w-full max-w-[920px] rounded-[20px] border border-white/[0.11] bg-[#242428]/95 p-3 shadow-[0_24px_70px_rgba(0,0,0,0.30)] backdrop-blur-sm">
             <textarea
               placeholder="Ask about your documents..."
-              className="h-[88px] w-full resize-none bg-transparent px-4 pt-2 text-[14px] text-white outline-none placeholder:text-white/35"
+              className="h-[88px] w-full resize-none bg-transparent px-4 pt-2 text-[14px] text-white outline-none placeholder:text-white/30"
             />
 
             <div className="flex items-center justify-between px-1 pb-1">
               <div className="flex items-center gap-2">
-                <button className="flex items-center gap-2 rounded-lg border border-white/[0.09] px-3.5 py-2 text-[12px] text-white/55 transition hover:bg-white/[0.04] hover:text-white">
+                <button className="flex items-center gap-2 rounded-lg border border-white/[0.08] px-3.5 py-2 text-[12px] text-white/50 transition hover:bg-white/[0.04] hover:text-white">
                   <Upload size={14} strokeWidth={1.8} />
                   Upload
                 </button>
 
-                <button className="flex items-center gap-2 rounded-lg border border-white/[0.09] px-3.5 py-2 text-[12px] text-white/55 transition hover:bg-white/[0.04] hover:text-white">
+                <button className="flex items-center gap-2 rounded-lg border border-white/[0.08] px-3.5 py-2 text-[12px] text-white/50 transition hover:bg-white/[0.04] hover:text-white">
                   <Globe2 size={14} strokeWidth={1.8} />
                   Web Search
                 </button>
@@ -142,7 +141,7 @@ export default function MainChat() {
 
               <button
                 aria-label="Send"
-                className="flex h-10 w-11 items-center justify-center rounded-lg bg-[#8E3A59] text-white shadow-[0_7px_20px_rgba(142,58,89,0.28)] transition hover:bg-[#9f4668]"
+                className="flex h-10 w-11 items-center justify-center rounded-lg bg-[#8E3A59] text-white shadow-[0_7px_20px_rgba(142,58,89,0.22)] transition hover:bg-[#9f4668]"
               >
                 <ArrowUp size={18} strokeWidth={2} />
               </button>
@@ -150,74 +149,80 @@ export default function MainChat() {
           </section>
 
           {/* Suggested prompts */}
-          <section className="mx-auto mt-7 w-full max-w-[920px]">
-            <h2 className="mb-3 text-[14px] font-medium text-white/70">
+            <section className="mx-auto mt-7 w-full max-w-[920px]">
+            <h2 className="mb-3 text-[13px] font-semibold text-white/65">
               Suggested Prompts
-            </h2>
+             </h2>
 
             <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-              {prompts.map((prompt) => (
-                <button
-                  key={prompt.title}
-                  className="group flex min-h-[78px] items-center gap-3 rounded-xl border border-white/[0.09] bg-white/[0.018] px-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[#8E3A59]/50 hover:bg-[#8E3A59]/[0.06]"
-                >
-                  <span className="w-5 shrink-0 text-center text-[18px] text-[#D34778] transition group-hover:scale-110">
-                    {prompt.icon}
-                  </span>
+                {prompts.map((prompt) => {
+                const Icon = prompt.icon
 
-                  <span>
-                    <span className="block text-[12px] font-medium text-white/85">
-                      {prompt.title}
+                return (
+                    <button
+                    key={prompt.title}
+                    className="group flex h-[62px] items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.016] px-3.5 text-left transition duration-200 hover:border-[#8E3A59]/35 hover:bg-white/[0.025]"
+                    >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#8E3A59]/[0.07] text-[#C46A8A]">
+                        <Icon
+                        size={15}
+                        strokeWidth={1.7}
+                        />
                     </span>
 
-                    <span className="block text-[12px] text-white/55">
-                      {prompt.subtitle}
+                    <span className="min-w-0">
+                        <span className="block text-[12px] font-semibold leading-[15px] text-white/80">
+                        {prompt.title}
+                        </span>
+
+                        <span className="block text-[11px] leading-[15px] text-white/38">
+                        {prompt.subtitle}
+                        </span>
                     </span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
+                    </button>
+                 )
+             })}
+         </div>
+    </section>
 
           {/* Recent documents */}
-          <section className="mx-auto mt-7 w-full max-w-[920px]">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-[14px] font-medium text-white/70">
-                Recent Documents
-              </h2>
+                <section className="mx-auto mt-7 w-full max-w-[920px]">
+                <div className="mb-3 flex items-center justify-between">
+                    <h2 className="text-[13px] font-semibold text-white/65">
+                    Recent Documents
+                    </h2>
 
-              <button className="text-[12px] text-white/30 transition hover:text-white/60">
-                View all
-              </button>
-            </div>
+                    <button className="text-[11px] text-white/28 transition hover:text-white/55">
+                    View all
+                    </button>
+                </div>
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              {documents.map((document) => (
-                <button
-                  key={document.name}
-                  className="group flex items-center gap-3 rounded-xl border border-white/[0.09] bg-white/[0.018] p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-white/[0.16] hover:bg-white/[0.04]"
-                >
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white/[0.05]">
-                    <FileText
-                      size={19}
-                      strokeWidth={1.7}
-                      className={document.color}
-                    />
-                  </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    {documents.map((document) => (
+                    <button
+                        key={document.name}
+                        className="group flex h-[70px] items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.016] px-3.5 text-left transition duration-200 hover:border-white/[0.13] hover:bg-white/[0.025]"
+                    >
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.035]">
+                        <FileTypeIcon
+                            type={document.type}
+                            size={24}
+                        />
+                        </div>
 
-                  <div className="min-w-0">
-                    <div className="truncate text-[13px] font-medium text-white/85">
-                      {document.name}
+                        <div className="min-w-0">
+                        <div className="truncate text-[12px] font-semibold leading-4 text-white/82">
+                            {document.name}
+                        </div>
+
+                        <div className="mt-0.5 text-[10px] leading-4 text-white/32">
+                            {document.size} · {document.type.toUpperCase()}
+                        </div>
                     </div>
-
-                    <div className="mt-1 text-[11px] text-white/35">
-                      {document.size} · {document.type}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </section>
+                 </button>
+                ))}
+                </div>
+            </section>
         </div>
       </div>
     </main>
