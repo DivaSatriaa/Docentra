@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: docentra-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: docentra
+      POSTGRES_USER: docentra
+      POSTGRES_PASSWORD: docentra_dev_password
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
