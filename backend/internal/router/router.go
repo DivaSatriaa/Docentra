@@ -5,12 +5,19 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/DivaSatriaa/Docentra/backend/internal/handler"
+	"github.com/DivaSatriaa/Docentra/backend/internal/repository"
+	"github.com/DivaSatriaa/Docentra/backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func Setup(db *pgxpool.Pool) *gin.Engine {
 	r := gin.Default()
+
+	workspaceRepository := repository.NewWorkspaceRepository(db)
+	workspaceService := service.NewWorkspaceService(workspaceRepository)
+	workspaceHandler := handler.NewWorkspaceHandler(workspaceService)
 
 	r.GET("/health", func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
@@ -31,6 +38,16 @@ func Setup(db *pgxpool.Pool) *gin.Engine {
 			"database": "ok",
 		})
 	})
+
+	api := r.Group("/api/v1")
+	{
+		workspaces := api.Group("/workspaces")
+		{
+			workspaces.POST("", workspaceHandler.Create)
+			workspaces.GET("", workspaceHandler.List)
+			workspaces.GET("/:id", workspaceHandler.GetByID)
+		}
+	}
 
 	return r
 }
