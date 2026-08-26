@@ -18,6 +18,9 @@ func Setup(db *pgxpool.Pool) *gin.Engine {
 	workspaceRepository := repository.NewWorkspaceRepository(db)
 	workspaceService := service.NewWorkspaceService(workspaceRepository)
 	workspaceHandler := handler.NewWorkspaceHandler(workspaceService)
+	documentRepository := repository.NewDocumentRepository(db)
+	documentService := service.NewDocumentService(documentRepository)
+	documentHandler := handler.NewDocumentHandler(documentService)
 
 	r.GET("/health", func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
@@ -46,6 +49,9 @@ func Setup(db *pgxpool.Pool) *gin.Engine {
 			workspaces.POST("", workspaceHandler.Create)
 			workspaces.GET("", workspaceHandler.List)
 			workspaces.GET("/:id", workspaceHandler.GetByID)
+
+			workspaces.POST("/:id/documents", documentHandler.Create)
+			workspaces.GET("/:id/documents", documentHandler.List)
 		}
 	}
 
