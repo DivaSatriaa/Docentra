@@ -46,3 +46,18 @@ def store_chunks(
         connection.commit()
 
     return len(rows)
+
+def delete_chunks(document_id: str) -> None:
+    query = """
+        DELETE FROM document_chunks
+        WHERE document_id = %s
+    """
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                query,
+                (UUID(document_id),),
+            )
+
+        connection.commit()

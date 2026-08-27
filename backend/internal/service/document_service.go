@@ -5,18 +5,25 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/DivaSatriaa/Docentra/backend/internal/client"
 	"github.com/DivaSatriaa/Docentra/backend/internal/model"
 	"github.com/DivaSatriaa/Docentra/backend/internal/repository"
 )
 
 type DocumentService struct {
 	repository *repository.DocumentRepository
+	aiClient   *client.AIClient
 }
 
-func NewDocumentService(repository *repository.DocumentRepository) *DocumentService {
+func NewDocumentService(
+	repository *repository.DocumentRepository,
+	aiClient *client.AIClient,
+) *DocumentService {
 	return &DocumentService{
 		repository: repository,
+		aiClient:   aiClient,
 	}
 }
 
@@ -74,7 +81,31 @@ func (s *DocumentService) Create(
 		ProcessingStatus: "pending",
 	}
 
-	return s.repository.Create(ctx, document)
+	created, err := s.repository.Create(ctx, document)
+	if err != nil {
+		return nil, err
+	}
+
+	go func(documentID string) {
+		processingCtx, cancel := context.WithTimeout(
+			context.Background(),
+			15*time.Minute,
+		)
+		defer cancel()
+
+		if err := s.aiClient.ProcessDocument(
+			processingCtx,
+			documentID,
+		); err != nil {
+			fmt.Printf(
+				"document processing failed for %s: %v\n",
+				documentID,
+				err,
+			)
+		}
+	}(created.ID)
+
+	return created, nil
 }
 
 func (s *DocumentService) ListByWorkspace(

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/DivaSatriaa/Docentra/backend/internal/client"
 	"github.com/DivaSatriaa/Docentra/backend/internal/handler"
 	"github.com/DivaSatriaa/Docentra/backend/internal/repository"
 	"github.com/DivaSatriaa/Docentra/backend/internal/service"
@@ -12,18 +13,42 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func Setup(db *pgxpool.Pool) *gin.Engine {
+func Setup(
+	db *pgxpool.Pool,
+	aiClient *client.AIClient,
+) *gin.Engine {
 	r := gin.Default()
 
+	// =========================
+	// Dependencies
+	// =========================
+
 	workspaceRepository := repository.NewWorkspaceRepository(db)
-	workspaceService := service.NewWorkspaceService(workspaceRepository)
-	workspaceHandler := handler.NewWorkspaceHandler(workspaceService)
+	workspaceService := service.NewWorkspaceService(
+		workspaceRepository,
+	)
+	workspaceHandler := handler.NewWorkspaceHandler(
+		workspaceService,
+	)
+
 	documentRepository := repository.NewDocumentRepository(db)
-	documentService := service.NewDocumentService(documentRepository)
-	documentHandler := handler.NewDocumentHandler(documentService)
+	documentService := service.NewDocumentService(
+		documentRepository,
+		aiClient,
+	)
+	documentHandler := handler.NewDocumentHandler(
+		documentService,
+	)
+
+	// =========================
+	// Health
+	// =========================
 
 	r.GET("/health", func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(
+			c.Request.Context(),
+			2*time.Second,
+		)
 		defer cancel()
 
 		if err := db.Ping(ctx); err != nil {
@@ -42,17 +67,35 @@ func Setup(db *pgxpool.Pool) *gin.Engine {
 		})
 	})
 
-	api := r.Group("/api/v1")
-	{
-		workspaces := api.Group("/workspaces")
-		{
-			workspaces.POST("", workspaceHandler.Create)
-			workspaces.GET("", workspaceHandler.List)
-			workspaces.GET("/:id", workspaceHandler.GetByID)
+	// =========================
+	// API v1
+	// =========================
 
-			workspaces.POST("/:id/documents", documentHandler.Create)
-			workspaces.GET("/:id/documents", documentHandler.List)
-		}
+	api := r.Group("/api/v1")
+
+	// =========================
+	// Workspaces
+	// =========================
+
+	workspaces := api.Group("/workspaces")
+	{
+		workspaces.POST("", workspaceHandler.Create)
+		workspaces.GET("", workspaceHandler.List)
+		workspaces.GET("/:id", workspaceHandler.GetByID)
+
+		// =====================
+		// Documents
+		// =====================
+
+		workspaces.POST(
+			"/:id/documents",
+			documentHandler.Create,
+		)
+
+		workspaces.GET(
+			"/:id/documents",
+			documentHandler.List,
+		)
 	}
 
 	return r
