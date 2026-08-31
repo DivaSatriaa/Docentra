@@ -40,6 +40,22 @@ func Setup(
 		documentService,
 	)
 
+	conversationRepository := repository.NewConversationRepository(db)
+	conversationService := service.NewConversationService(
+		conversationRepository,
+	)
+	conversationHandler := handler.NewConversationHandler(
+		conversationService,
+	)
+
+	messageRepository := repository.NewMessageRepository(db)
+	messageService := service.NewMessageService(
+		messageRepository,
+	)
+	messageHandler := handler.NewMessageHandler(
+		messageService,
+	)
+
 	// =========================
 	// Health
 	// =========================
@@ -79,9 +95,20 @@ func Setup(
 
 	workspaces := api.Group("/workspaces")
 	{
-		workspaces.POST("", workspaceHandler.Create)
-		workspaces.GET("", workspaceHandler.List)
-		workspaces.GET("/:id", workspaceHandler.GetByID)
+		workspaces.POST(
+			"",
+			workspaceHandler.Create,
+		)
+
+		workspaces.GET(
+			"",
+			workspaceHandler.List,
+		)
+
+		workspaces.GET(
+			"/:id",
+			workspaceHandler.GetByID,
+		)
 
 		// =====================
 		// Documents
@@ -95,6 +122,51 @@ func Setup(
 		workspaces.GET(
 			"/:id/documents",
 			documentHandler.List,
+		)
+
+		// =====================
+		// Conversations
+		// =====================
+
+		workspaces.POST(
+			"/:id/conversations",
+			conversationHandler.Create,
+		)
+
+		workspaces.GET(
+			"/:id/conversations",
+			conversationHandler.List,
+		)
+	}
+
+	// =========================
+	// Conversations
+	// =========================
+
+	conversations := api.Group("/conversations")
+	{
+		conversations.GET(
+			"/:id",
+			conversationHandler.GetByID,
+		)
+
+		// =====================
+		// Messages
+		// =====================
+
+		conversations.POST(
+			"/:id/messages",
+			messageHandler.Create,
+		)
+
+		conversations.GET(
+			"/:id/messages",
+			messageHandler.List,
+		)
+
+		conversations.GET(
+			"/:id/messages/:messageId",
+			messageHandler.GetByID,
 		)
 	}
 
