@@ -1,6 +1,7 @@
 from app.rag.context import build_context
 from app.rag.embeddings import create_embeddings
 from app.rag.generation import generate_answer
+from app.rag.query_rewriter import rewrite_query
 from app.rag.retriever import search_chunks
 
 
@@ -8,6 +9,7 @@ def chat(
     question: str,
     *,
     workspace_id: str,
+    history: list[dict] | None = None,
     document_ids: list[str] | None = None,
     collection_id: str | None = None,
     top_k: int = 5,
@@ -20,8 +22,16 @@ def chat(
     if not workspace_id:
         raise ValueError("workspace_id is required")
 
+    history = history or []
+
+    # Rewrite follow-up questions into standalone search queries.
+    search_query = rewrite_query(
+        question,
+        history,
+    )
+
     query_embedding = create_embeddings(
-        [question],
+        [search_query],
     )[0]
 
     results = search_chunks(
@@ -40,6 +50,7 @@ def chat(
                 "that question."
             ),
             "citations": [],
+            "search_query": search_query,
         }
 
     context = build_context(results)
@@ -63,4 +74,5 @@ def chat(
     return {
         "answer": answer,
         "citations": citations,
+        "search_query": search_query,
     }

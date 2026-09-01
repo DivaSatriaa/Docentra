@@ -21,7 +21,6 @@ func NewMessageHandler(
 }
 
 type createMessageRequest struct {
-	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
@@ -37,20 +36,26 @@ func (h *MessageHandler) Create(c *gin.Context) {
 		return
 	}
 
-	message, err := h.service.Create(
+	result, _, err := h.service.Chat(
 		c.Request.Context(),
 		conversationID,
-		req.Role,
 		req.Content,
 	)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
+		if err.Error() == "conversation not found" {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "conversation not found",
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
 		})
 		return
 	}
 
-	c.JSON(http.StatusCreated, message)
+	c.JSON(http.StatusOK, result)
 }
 
 func (h *MessageHandler) List(c *gin.Context) {

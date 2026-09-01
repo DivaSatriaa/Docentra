@@ -51,6 +51,8 @@ func Setup(
 	messageRepository := repository.NewMessageRepository(db)
 	messageService := service.NewMessageService(
 		messageRepository,
+		conversationRepository,
+		aiClient,
 	)
 	messageHandler := handler.NewMessageHandler(
 		messageService,

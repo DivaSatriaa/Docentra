@@ -5,30 +5,35 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/DivaSatriaa/Docentra/backend/internal/client"
 	"github.com/DivaSatriaa/Docentra/backend/internal/model"
 	"github.com/DivaSatriaa/Docentra/backend/internal/repository"
 )
 
 type MessageService struct {
-	repository *repository.MessageRepository
+	repository             *repository.MessageRepository
+	conversationRepository *repository.ConversationRepository
+	aiClient               *client.AIClient
 }
 
 func NewMessageService(
 	repository *repository.MessageRepository,
+	conversationRepository *repository.ConversationRepository,
+	aiClient *client.AIClient,
 ) *MessageService {
 	return &MessageService{
-		repository: repository,
+		repository:             repository,
+		conversationRepository: conversationRepository,
+		aiClient:               aiClient,
 	}
 }
 
-func (s *MessageService) Create(
+func (s *MessageService) CreateUserMessage(
 	ctx context.Context,
 	conversationID string,
-	role string,
 	content string,
 ) (*model.Message, error) {
 	conversationID = strings.TrimSpace(conversationID)
-	role = strings.TrimSpace(strings.ToLower(role))
 	content = strings.TrimSpace(content)
 
 	if conversationID == "" {
@@ -39,18 +44,97 @@ func (s *MessageService) Create(
 		return nil, fmt.Errorf("content is required")
 	}
 
-	switch role {
-	case "user", "assistant", "system":
-	default:
-		return nil, fmt.Errorf("invalid message role")
-	}
-
 	return s.repository.Create(
 		ctx,
 		conversationID,
-		role,
+		"user",
 		content,
 	)
+}
+
+func (s *MessageService) Chat(
+	ctx context.Context,
+	conversationID string,
+	content string,
+) (*client.ChatResponse, *model.Message, error) {
+	conversationID = strings.TrimSpace(conversationID)
+	content = strings.TrimSpace(content)
+
+	if conversationID == "" {
+		return nil, nil, fmt.Errorf("conversation_id is required")
+	}
+
+	if content == "" {
+		return nil, nil, fmt.Errorf("content is required")
+	}
+
+	conversation, err := s.conversationRepository.GetByID(
+		ctx,
+		conversationID,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	history, err := s.repository.ListByConversation(
+		ctx,
+		conversationID,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	userMessage, err := s.CreateUserMessage(
+		ctx,
+		conversationID,
+		content,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	aiHistory := make(
+		[]client.ChatHistoryMessage,
+		0,
+		len(history),
+	)
+
+	for _, message := range history {
+		aiHistory = append(
+			aiHistory,
+			client.ChatHistoryMessage{
+				Role:    message.Role,
+				Content: message.Content,
+			},
+		)
+	}
+
+	aiRequest := client.ChatRequest{
+		Question:    content,
+		WorkspaceID: conversation.WorkspaceID,
+		History:     aiHistory,
+		TopK:        5,
+	}
+
+	aiResponse, err := s.aiClient.Chat(
+		ctx,
+		aiRequest,
+	)
+	if err != nil {
+		return nil, userMessage, err
+	}
+
+	assistantMessage, err := s.repository.Create(
+		ctx,
+		conversationID,
+		"assistant",
+		aiResponse.Answer,
+	)
+	if err != nil {
+		return nil, userMessage, err
+	}
+
+	return aiResponse, assistantMessage, nil
 }
 
 func (s *MessageService) ListByConversation(
