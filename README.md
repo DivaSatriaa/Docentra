@@ -12,6 +12,11 @@ Docentra is actively being developed. Some features and UI components are still 
 
 ---
 
+## 📸 Screenshot
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/2cc38afd-ee2f-479d-ac1a-fd7b036f2b23" />
+
+---
+
 ## ✨ What is Docentra?
 
 Working with documents often means switching between file managers, PDF readers, spreadsheets, and search tools just to find a small piece of information.
