@@ -80,7 +80,12 @@ function App() {
     <div className="flex h-screen overflow-hidden bg-[#18181b] text-[#F2F2F2]">
       <Sidebar
         activePage={page}
+        activeConversationId={conversationId}
         onNavigate={setPage}
+        onSelectConversation={(id) => {
+          setConversationId(id)
+          setPage("chat")
+        }}
         onNewChat={handleNewChat}
       />
 

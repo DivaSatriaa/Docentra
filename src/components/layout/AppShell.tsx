@@ -77,11 +77,18 @@ export default function AppShell() {
     setActivePage(page)
   }
 
+  function handleSelectConversation(id: string) {
+    setConversationId(id)
+    setActivePage("chat")
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-[#222224] text-[#F2F2F2]">
       <Sidebar
         activePage={activePage}
+        activeConversationId={conversationId}
         onNavigate={handleNavigate}
+        onSelectConversation={handleSelectConversation}
         onNewChat={handleNewChat}
       />
 
