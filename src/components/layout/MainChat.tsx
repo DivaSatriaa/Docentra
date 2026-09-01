@@ -1,13 +1,14 @@
 import {
   ArrowUp,
-  FileText,
   Globe2,
   Sparkles,
   Upload,
 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 import FileTypeIcon from "../common/FileTypeIcon"
+
+const API_BASE_URL = "http://localhost:8080"
 
 const prompts = [
   {
@@ -47,57 +48,206 @@ const documents = [
 ]
 
 type Message = {
-  id: number
+  id: string
   role: "user" | "assistant"
   content: string
 }
 
-export default function MainChat() {
+type ApiMessage = {
+  id: string
+  role: "user" | "assistant" | "system"
+  content: string
+  created_at: string
+}
+
+type ApiResponse = {
+  answer: string
+  search_query: string
+  citations: {
+    document_id: string
+    document_name: string
+    page: number
+    chunk_id: string
+    snippet: string
+  }[]
+}
+
+interface MainChatProps {
+  conversationId: string
+}
+
+export default function MainChat({
+  conversationId,
+}: MainChatProps) {
   const [question, setQuestion] = useState("")
   const [messages, setMessages] = useState<Message[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true)
+  const [error, setError] = useState("")
 
   const hasConversation = messages.length > 0
 
-  function sendMessage() {
+  useEffect(() => {
+    async function loadHistory() {
+      setMessages([])
+      setError("")
+      setIsLoadingHistory(true)
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/v1/conversations/${conversationId}/messages`,
+        )
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to load messages: ${response.status}`,
+          )
+        }
+
+        const data: ApiMessage[] = await response.json()
+
+        const loadedMessages: Message[] = data
+          .filter(
+            (
+              message,
+            ): message is ApiMessage & {
+              role: "user" | "assistant"
+            } =>
+              message.role === "user" ||
+              message.role === "assistant",
+          )
+          .map((message) => ({
+            id: message.id,
+            role: message.role,
+            content: message.content,
+          }))
+
+        setMessages(loadedMessages)
+      } catch (requestError) {
+        console.error(
+          "Failed to load conversation:",
+          requestError,
+        )
+
+        setError(
+          "Something went wrong while loading your conversation.",
+        )
+      } finally {
+        setIsLoadingHistory(false)
+      }
+    }
+
+    void loadHistory()
+  }, [conversationId])
+
+  async function sendMessage() {
     const trimmedQuestion = question.trim()
 
-    if (!trimmedQuestion) {
+    if (
+      !trimmedQuestion ||
+      isLoading ||
+      isLoadingHistory
+    ) {
       return
     }
 
+    setError("")
+
     const userMessage: Message = {
-      id: Date.now(),
+      id: crypto.randomUUID(),
       role: "user",
       content: trimmedQuestion,
-    }
-
-    const assistantMessage: Message = {
-      id: Date.now() + 1,
-      role: "assistant",
-      content:
-        "I'm ready to answer this once the Docentra AI service is connected.",
     }
 
     setMessages((current) => [
       ...current,
       userMessage,
-      assistantMessage,
     ])
 
     setQuestion("")
+    setIsLoading(true)
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/conversations/${conversationId}/messages`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            content: trimmedQuestion,
+          }),
+        },
+      )
+
+      if (!response.ok) {
+        const body = await response.text()
+
+        throw new Error(
+          body ||
+            `Request failed with ${response.status}`,
+        )
+      }
+
+      const data: ApiResponse = await response.json()
+
+      const assistantMessage: Message = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: data.answer,
+      }
+
+      setMessages((current) => [
+        ...current,
+        assistantMessage,
+      ])
+    } catch (requestError) {
+      console.error(
+        "Failed to send message:",
+        requestError,
+      )
+
+      setError(
+        "Something went wrong while connecting to Docentra AI.",
+      )
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  function handlePromptClick(prompt: (typeof prompts)[number]) {
-    setQuestion(`${prompt.label} ${prompt.subtitle}`)
+  function handlePromptClick(
+    prompt: (typeof prompts)[number],
+  ) {
+    setQuestion(
+      `${prompt.label} ${prompt.subtitle}`,
+    )
   }
 
   function handleKeyDown(
     event: React.KeyboardEvent<HTMLTextAreaElement>,
   ) {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey
+    ) {
       event.preventDefault()
-      sendMessage()
+      void sendMessage()
     }
+  }
+
+  if (isLoadingHistory) {
+    return (
+      <main className="relative flex min-w-0 flex-1 items-center justify-center overflow-hidden bg-[#18181b]">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute left-1/2 top-[-180px] h-[520px] w-[760px] -translate-x-1/2 rounded-full bg-[#8E3A59]/[0.10] blur-[150px]" />
+        </div>
+
+        <div className="relative z-10 text-sm text-white/35">
+          Loading conversation...
+        </div>
+      </main>
+    )
   }
 
   return (
@@ -120,6 +270,8 @@ export default function MainChat() {
           setQuestion={setQuestion}
           sendMessage={sendMessage}
           handleKeyDown={handleKeyDown}
+          isLoading={isLoading}
+          error={error}
         />
       ) : (
         <WelcomeView
@@ -128,6 +280,8 @@ export default function MainChat() {
           sendMessage={sendMessage}
           handleKeyDown={handleKeyDown}
           handlePromptClick={handlePromptClick}
+          isLoading={isLoading}
+          error={error}
         />
       )}
     </main>
@@ -140,16 +294,20 @@ function WelcomeView({
   sendMessage,
   handleKeyDown,
   handlePromptClick,
+  isLoading,
+  error,
 }: {
   question: string
   setQuestion: (value: string) => void
-  sendMessage: () => void
+  sendMessage: () => Promise<void>
   handleKeyDown: (
     event: React.KeyboardEvent<HTMLTextAreaElement>,
   ) => void
   handlePromptClick: (
     prompt: (typeof prompts)[number],
   ) => void
+  isLoading: boolean
+  error: string
 }) {
   return (
     <div className="relative z-10 flex flex-1 overflow-y-auto px-8">
@@ -179,7 +337,14 @@ function WelcomeView({
           setQuestion={setQuestion}
           sendMessage={sendMessage}
           handleKeyDown={handleKeyDown}
+          isLoading={isLoading}
         />
+
+        {error && (
+          <p className="mx-auto mt-3 max-w-[940px] text-xs text-red-300/80">
+            {error}
+          </p>
+        )}
 
         {/* Suggested prompts */}
         <section className="mx-auto mt-7 w-full max-w-[940px]">
@@ -191,7 +356,9 @@ function WelcomeView({
             {prompts.map((prompt) => (
               <button
                 key={prompt.label}
-                onClick={() => handlePromptClick(prompt)}
+                onClick={() =>
+                  handlePromptClick(prompt)
+                }
                 className="group flex h-[62px] items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.016] px-3.5 text-left transition duration-200 hover:border-[#8E3A59]/35 hover:bg-white/[0.025]"
               >
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#8E3A59]/[0.07] text-[#C46A8A]">
@@ -246,7 +413,8 @@ function WelcomeView({
                   </div>
 
                   <div className="mt-0.5 text-[10px] leading-4 text-white/32">
-                    {document.size} · {document.type.toUpperCase()}
+                    {document.size} ·{" "}
+                    {document.type.toUpperCase()}
                   </div>
                 </div>
               </button>
@@ -264,14 +432,18 @@ function ConversationView({
   setQuestion,
   sendMessage,
   handleKeyDown,
+  isLoading,
+  error,
 }: {
   messages: Message[]
   question: string
   setQuestion: (value: string) => void
-  sendMessage: () => void
+  sendMessage: () => Promise<void>
   handleKeyDown: (
     event: React.KeyboardEvent<HTMLTextAreaElement>,
   ) => void
+  isLoading: boolean
+  error: string
 }) {
   return (
     <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
@@ -297,6 +469,20 @@ function ConversationView({
               </div>
             </div>
           ))}
+
+          {isLoading && (
+            <div className="flex justify-start">
+              <div className="rounded-2xl rounded-bl-md border border-white/[0.08] bg-white/[0.025] px-4 py-3 text-sm text-white/45">
+                Thinking...
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <p className="text-xs text-red-300/80">
+              {error}
+            </p>
+          )}
         </div>
       </div>
 
@@ -307,6 +493,7 @@ function ConversationView({
           sendMessage={sendMessage}
           handleKeyDown={handleKeyDown}
           compact
+          isLoading={isLoading}
         />
       </div>
     </div>
@@ -319,14 +506,16 @@ function Composer({
   sendMessage,
   handleKeyDown,
   compact = false,
+  isLoading,
 }: {
   question: string
   setQuestion: (value: string) => void
-  sendMessage: () => void
+  sendMessage: () => Promise<void>
   handleKeyDown: (
     event: React.KeyboardEvent<HTMLTextAreaElement>,
   ) => void
   compact?: boolean
+  isLoading: boolean
 }) {
   return (
     <section
@@ -337,18 +526,24 @@ function Composer({
     >
       <textarea
         value={question}
-        onChange={(event) => setQuestion(event.target.value)}
+        onChange={(event) =>
+          setQuestion(event.target.value)
+        }
         onKeyDown={handleKeyDown}
+        disabled={isLoading}
         placeholder="Ask about your documents..."
         className={[
-          "w-full resize-none bg-transparent px-4 pt-2 text-[14px] text-white outline-none placeholder:text-white/30",
+          "w-full resize-none bg-transparent px-4 pt-2 text-[14px] text-white outline-none placeholder:text-white/30 disabled:opacity-60",
           compact ? "h-[72px]" : "h-[88px]",
         ].join(" ")}
       />
 
       <div className="flex items-center justify-between px-1 pb-1">
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-2 rounded-lg border border-white/[0.08] px-3.5 py-2 text-[12px] text-white/50 transition hover:bg-white/[0.04] hover:text-white">
+          <button
+            disabled={isLoading}
+            className="flex items-center gap-2 rounded-lg border border-white/[0.08] px-3.5 py-2 text-[12px] text-white/50 transition hover:bg-white/[0.04] hover:text-white disabled:opacity-40"
+          >
             <Upload
               size={14}
               strokeWidth={1.8}
@@ -356,7 +551,10 @@ function Composer({
             Upload
           </button>
 
-          <button className="flex items-center gap-2 rounded-lg border border-white/[0.08] px-3.5 py-2 text-[12px] text-white/50 transition hover:bg-white/[0.04] hover:text-white">
+          <button
+            disabled={isLoading}
+            className="flex items-center gap-2 rounded-lg border border-white/[0.08] px-3.5 py-2 text-[12px] text-white/50 transition hover:bg-white/[0.04] hover:text-white disabled:opacity-40"
+          >
             <Globe2
               size={14}
               strokeWidth={1.8}
@@ -366,8 +564,8 @@ function Composer({
         </div>
 
         <button
-          onClick={sendMessage}
-          disabled={!question.trim()}
+          onClick={() => void sendMessage()}
+          disabled={!question.trim() || isLoading}
           aria-label="Send"
           className="flex h-10 w-11 items-center justify-center rounded-lg bg-[#8E3A59] text-white shadow-[0_7px_20px_rgba(142,58,89,0.22)] transition hover:bg-[#9f4668] disabled:cursor-not-allowed disabled:opacity-35"
         >

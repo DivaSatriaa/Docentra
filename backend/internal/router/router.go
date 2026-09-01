@@ -9,6 +9,7 @@ import (
 	"github.com/DivaSatriaa/Docentra/backend/internal/handler"
 	"github.com/DivaSatriaa/Docentra/backend/internal/repository"
 	"github.com/DivaSatriaa/Docentra/backend/internal/service"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -18,6 +19,12 @@ func Setup(
 	aiClient *client.AIClient,
 ) *gin.Engine {
 	r := gin.Default()
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:5173"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept"},
+		AllowCredentials: true,
+	}))
 
 	// =========================
 	// Dependencies
