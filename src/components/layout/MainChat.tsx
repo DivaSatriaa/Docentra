@@ -1,5 +1,6 @@
 import {
   ArrowUp,
+  FileText,
   Globe2,
   Sparkles,
   Upload,
@@ -47,10 +48,19 @@ const documents = [
   },
 ]
 
+type Citation = {
+  document_id: string
+  document_name: string
+  page: number
+  chunk_id: string
+  snippet: string
+}
+
 type Message = {
   id: string
   role: "user" | "assistant"
   content: string
+  citations?: Citation[]
 }
 
 type ApiMessage = {
@@ -63,13 +73,7 @@ type ApiMessage = {
 type ApiResponse = {
   answer: string
   search_query: string
-  citations: {
-    document_id: string
-    document_name: string
-    page: number
-    chunk_id: string
-    snippet: string
-  }[]
+  citations: Citation[]
 }
 
 interface MainChatProps {
@@ -82,7 +86,8 @@ export default function MainChat({
   const [question, setQuestion] = useState("")
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [isLoadingHistory, setIsLoadingHistory] = useState(true)
+  const [isLoadingHistory, setIsLoadingHistory] =
+    useState(true)
   const [error, setError] = useState("")
 
   const hasConversation = messages.length > 0
@@ -104,7 +109,8 @@ export default function MainChat({
           )
         }
 
-        const data: ApiMessage[] = await response.json()
+        const data: ApiMessage[] =
+          await response.json()
 
         const loadedMessages: Message[] = data
           .filter(
@@ -190,12 +196,14 @@ export default function MainChat({
         )
       }
 
-      const data: ApiResponse = await response.json()
+      const data: ApiResponse =
+        await response.json()
 
       const assistantMessage: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
         content: data.answer,
+        citations: data.citations,
       }
 
       setMessages((current) => [
@@ -449,26 +457,43 @@ function ConversationView({
     <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
       <div className="flex-1 overflow-y-auto px-8">
         <div className="mx-auto w-full max-w-[900px] space-y-6 py-8">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={
-                message.role === "user"
-                  ? "flex justify-end"
-                  : "flex justify-start"
-              }
-            >
+          {messages.map((message) => {
+            const hasCitations =
+              message.role === "assistant" &&
+              Boolean(
+                message.citations &&
+                  message.citations.length > 0,
+              )
+
+            return (
               <div
+                key={message.id}
                 className={
                   message.role === "user"
-                    ? "max-w-[75%] rounded-2xl rounded-br-md bg-[#8E3A59] px-4 py-3 text-sm leading-6 text-white"
-                    : "max-w-[75%] rounded-2xl rounded-bl-md border border-white/[0.08] bg-white/[0.025] px-4 py-3 text-sm leading-6 text-white/75"
+                    ? "flex justify-end"
+                    : "flex justify-start"
                 }
               >
-                {message.content}
+                <div className="max-w-[75%]">
+                  <div
+                    className={
+                      message.role === "user"
+                        ? "rounded-2xl rounded-br-md bg-[#8E3A59] px-4 py-3 text-sm leading-6 text-white"
+                        : "rounded-2xl rounded-bl-md border border-white/[0.08] bg-white/[0.025] px-4 py-3 text-sm leading-6 text-white/75"
+                    }
+                  >
+                    {message.content}
+                  </div>
+
+                  {hasCitations && (
+                    <CitationList
+                      citations={message.citations ?? []}
+                    />
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
 
           {isLoading && (
             <div className="flex justify-start">
@@ -495,6 +520,60 @@ function ConversationView({
           compact
           isLoading={isLoading}
         />
+      </div>
+    </div>
+  )
+}
+
+function CitationList({
+  citations,
+}: {
+  citations: Citation[]
+}) {
+  return (
+    <div className="mt-3 w-full">
+      <div className="mb-2 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.10em] text-white/30">
+        <FileText
+          size={12}
+          strokeWidth={1.8}
+        />
+        Sources
+      </div>
+
+      <div className="space-y-2">
+        {citations.map((citation, index) => (
+          <div
+            key={`${citation.chunk_id}-${index}`}
+            className="rounded-xl border border-white/[0.07] bg-white/[0.018] px-3 py-2.5 transition hover:border-white/[0.11] hover:bg-white/[0.025]"
+          >
+            <div className="flex items-start gap-2.5">
+              <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#8E3A59]/[0.08] text-[#C46A8A]">
+                <FileText
+                  size={14}
+                  strokeWidth={1.8}
+                />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-[11px] font-medium text-white/72">
+                    {citation.document_name}
+                  </span>
+
+                  <span className="shrink-0 rounded-md bg-white/[0.05] px-1.5 py-0.5 text-[9px] font-medium text-white/35">
+                    Page {citation.page}
+                  </span>
+                </div>
+
+                {citation.snippet?.trim() && (
+                  <p className="mt-1.5 line-clamp-3 text-[10px] leading-5 text-white/35">
+                    "{citation.snippet.trim()}"
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
