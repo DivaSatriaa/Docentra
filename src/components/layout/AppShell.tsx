@@ -3,7 +3,11 @@ import { useState } from "react"
 import Sidebar from "./Sidebar"
 import MainChat from "./MainChat"
 
-type Page = "chat" | "documents" | "collections" | "history"
+type Page =
+  | "chat"
+  | "documents"
+  | "collections"
+  | "history"
 
 const API_BASE_URL = "http://localhost:8080"
 
@@ -73,11 +77,65 @@ export default function AppShell() {
     }
   }
 
+  async function handleDeleteConversation(
+    id: string,
+  ) {
+    if (id !== conversationId) {
+      return
+    }
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/workspaces/${WORKSPACE_ID}/conversations`,
+      )
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to load conversations: ${response.status}`,
+        )
+      }
+
+      const conversations: ConversationResponse[] =
+        await response.json()
+
+      const remaining =
+        conversations
+          .filter(
+            (conversation) =>
+              conversation.id !== id,
+          )
+          .sort(
+            (a, b) =>
+              new Date(
+                b.updated_at,
+              ).getTime() -
+              new Date(
+                a.updated_at,
+              ).getTime(),
+          )
+
+      if (remaining.length > 0) {
+        setConversationId(
+          remaining[0].id,
+        )
+      } else {
+        await handleNewChat()
+      }
+    } catch (error) {
+      console.error(
+        "Failed to select replacement conversation:",
+        error,
+      )
+    }
+  }
+
   function handleNavigate(page: Page) {
     setActivePage(page)
   }
 
-  function handleSelectConversation(id: string) {
+  function handleSelectConversation(
+    id: string,
+  ) {
     setConversationId(id)
     setActivePage("chat")
   }
@@ -88,8 +146,13 @@ export default function AppShell() {
         activePage={activePage}
         activeConversationId={conversationId}
         onNavigate={handleNavigate}
-        onSelectConversation={handleSelectConversation}
+        onSelectConversation={
+          handleSelectConversation
+        }
         onNewChat={handleNewChat}
+        onDeleteConversation={
+          handleDeleteConversation
+        }
       />
 
       {activePage === "chat" ? (
@@ -99,7 +162,9 @@ export default function AppShell() {
       ) : (
         <main className="flex min-w-0 flex-1 items-center justify-center bg-[#18181b] text-white/40">
           <p className="text-sm">
-            {activePage.charAt(0).toUpperCase() +
+            {activePage
+              .charAt(0)
+              .toUpperCase() +
               activePage.slice(1)}{" "}
             page
           </p>

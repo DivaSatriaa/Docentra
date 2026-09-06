@@ -95,3 +95,27 @@ func (h *ConversationHandler) GetByID(c *gin.Context) {
 
 	c.JSON(http.StatusOK, conversation)
 }
+
+func (h *ConversationHandler) Delete(c *gin.Context) {
+	id := c.Param("id")
+
+	err := h.service.Delete(
+		c.Request.Context(),
+		id,
+	)
+	if err != nil {
+		if err.Error() == "conversation not found" {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "conversation not found",
+			})
+			return
+		}
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}

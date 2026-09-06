@@ -14,7 +14,11 @@ const WORKSPACE_ID =
 const INITIAL_CONVERSATION_ID =
   "ffa568ee-88e0-445a-a58f-9b8fd65fde5b"
 
-type Page = "chat" | "documents" | "collections" | "history"
+type Page =
+  | "chat"
+  | "documents"
+  | "collections"
+  | "history"
 
 type ConversationResponse = {
   id: string
@@ -27,9 +31,8 @@ type ConversationResponse = {
 function App() {
   const [page, setPage] = useState<Page>("chat")
 
-  const [conversationId, setConversationId] = useState(
-    INITIAL_CONVERSATION_ID,
-  )
+  const [conversationId, setConversationId] =
+    useState(INITIAL_CONVERSATION_ID)
 
   const [isCreatingConversation, setIsCreatingConversation] =
     useState(false)
@@ -76,17 +79,45 @@ function App() {
     }
   }
 
+  function handleSelectConversation(id: string) {
+    setConversationId(id)
+    setPage("chat")
+  }
+
+  function handleDeleteConversation(
+    deletedId: string,
+    replacementId: string | null,
+  ) {
+    // Kalau yang dihapus bukan conversation aktif,
+    // tidak perlu mengganti chat yang sedang dibuka.
+    if (deletedId !== conversationId) {
+      return
+    }
+
+    // Kalau masih ada conversation lain,
+    // langsung pindah ke conversation tersebut.
+    if (replacementId) {
+      setConversationId(replacementId)
+      setPage("chat")
+      return
+    }
+
+    // Kalau sudah tidak ada conversation sama sekali,
+    // buat conversation baru.
+    void handleNewChat()
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-[#18181b] text-[#F2F2F2]">
       <Sidebar
         activePage={page}
         activeConversationId={conversationId}
         onNavigate={setPage}
-        onSelectConversation={(id) => {
-          setConversationId(id)
-          setPage("chat")
-        }}
+        onSelectConversation={handleSelectConversation}
         onNewChat={handleNewChat}
+        onDeleteConversation={
+          handleDeleteConversation
+        }
       />
 
       {page === "chat" ? (

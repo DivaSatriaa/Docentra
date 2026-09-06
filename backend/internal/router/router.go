@@ -159,6 +159,11 @@ func Setup(
 			conversationHandler.GetByID,
 		)
 
+		conversations.DELETE(
+			"/:id",
+			conversationHandler.Delete,
+		)
+
 		// =====================
 		// Messages
 		// =====================

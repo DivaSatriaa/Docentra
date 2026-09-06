@@ -151,3 +151,28 @@ func (r *ConversationRepository) ListByWorkspace(
 
 	return conversations, nil
 }
+
+func (r *ConversationRepository) Delete(
+	ctx context.Context,
+	id string,
+) error {
+	query := `
+		DELETE FROM conversations
+		WHERE id = $1
+	`
+
+	result, err := r.db.Exec(
+		ctx,
+		query,
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("delete conversation: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("conversation not found")
+	}
+
+	return nil
+}

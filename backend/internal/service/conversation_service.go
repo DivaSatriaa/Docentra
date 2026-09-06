@@ -77,3 +77,16 @@ func (s *ConversationService) ListByWorkspace(
 		workspaceID,
 	)
 }
+
+func (s *ConversationService) Delete(
+	ctx context.Context,
+	id string,
+) error {
+	id = strings.TrimSpace(id)
+
+	if id == "" {
+		return fmt.Errorf("conversation id is required")
+	}
+
+	return s.repository.Delete(ctx, id)
+}
