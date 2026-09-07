@@ -16,6 +16,10 @@ type DocumentHandler struct {
 	service *service.DocumentService
 }
 
+type renameDocumentRequest struct {
+	Name string `json:"name"`
+}
+
 func NewDocumentHandler(service *service.DocumentService) *DocumentHandler {
 	return &DocumentHandler{
 		service: service,
@@ -160,4 +164,70 @@ func (h *DocumentHandler) List(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, documents)
+}
+
+func (h *DocumentHandler) Delete(c *gin.Context) {
+	id := c.Param("documentId")
+
+	err := h.service.Delete(
+		c.Request.Context(),
+		id,
+	)
+	if err != nil {
+		if err.Error() == "document not found" {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "document not found",
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+func (h *DocumentHandler) Rename(c *gin.Context) {
+	id := c.Param("documentId")
+
+	var req renameDocumentRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid request body",
+		})
+		return
+	}
+
+	document, err := h.service.Rename(
+		c.Request.Context(),
+		id,
+		req.Name,
+	)
+
+	if err != nil {
+		if err.Error() == "document not found" {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "document not found",
+			})
+			return
+		}
+
+		if err.Error() == "document name is required" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, document)
 }

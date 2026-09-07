@@ -133,6 +133,16 @@ func Setup(
 			documentHandler.List,
 		)
 
+		workspaces.PATCH(
+			"/:id/documents/:documentId",
+			documentHandler.Rename,
+		)
+
+		workspaces.DELETE(
+			"/:id/documents/:documentId",
+			documentHandler.Delete,
+		)
+
 		// =====================
 		// Conversations
 		// =====================

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -132,4 +133,67 @@ func (s *DocumentService) GetByID(
 	}
 
 	return s.repository.GetByID(ctx, id)
+}
+
+func (s *DocumentService) Rename(
+	ctx context.Context,
+	id string,
+	name string,
+) (*model.Document, error) {
+	id = strings.TrimSpace(id)
+	name = strings.TrimSpace(name)
+
+	if id == "" {
+		return nil, fmt.Errorf("document id is required")
+	}
+
+	if name == "" {
+		return nil, fmt.Errorf("document name is required")
+	}
+
+	return s.repository.UpdateName(
+		ctx,
+		id,
+		name,
+	)
+}
+
+func (s *DocumentService) Delete(
+	ctx context.Context,
+	id string,
+) error {
+	id = strings.TrimSpace(id)
+
+	if id == "" {
+		return fmt.Errorf("document id is required")
+	}
+
+	document, err := s.repository.GetByID(
+		ctx,
+		id,
+	)
+	if err != nil {
+		return err
+	}
+
+	if document.StoragePath != "" {
+		if err := os.Remove(document.StoragePath); err != nil {
+			if !os.IsNotExist(err) {
+				return fmt.Errorf(
+					"delete document file: %w",
+					err,
+				)
+			}
+		}
+	}
+
+	_, err = s.repository.Delete(
+		ctx,
+		id,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

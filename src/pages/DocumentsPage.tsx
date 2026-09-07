@@ -4,10 +4,17 @@ import {
   List,
   Loader2,
   MoreHorizontal,
+  Pencil,
   Search,
+  Trash2,
   Upload,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 
 const API_BASE_URL = "http://localhost:8080"
 
@@ -178,9 +185,123 @@ export default function DocumentsPage() {
   const [error, setError] =
     useState("")
 
-  async function loadDocuments() {
+  const [isUploading, setIsUploading] =
+    useState(false)
+
+  const [uploadError, setUploadError] =
+    useState("")
+
+  const [menuDocumentId, setMenuDocumentId] =
+    useState<string | null>(null)
+
+  const [renameTarget, setRenameTarget] =
+    useState<Document | null>(null)
+
+  const [renameValue, setRenameValue] =
+    useState("")
+
+  const [isRenaming, setIsRenaming] =
+    useState(false)
+
+  const [deleteTarget, setDeleteTarget] =
+    useState<Document | null>(null)
+
+  const [isDeleting, setIsDeleting] =
+    useState(false)
+
+  const fileInputRef =
+    useRef<HTMLInputElement | null>(null)
+
+  function handleOpenUpload() {
+    setUploadError("")
+    fileInputRef.current?.click()
+  }
+
+  async function handleUpload(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.target.files?.[0]
+
+    // Reset input supaya file yang sama bisa dipilih lagi
+    event.target.value = ""
+
+    if (!file) {
+      return
+    }
+
+    try {
+      setIsUploading(true)
+      setUploadError("")
+
+      const allowedExtensions = [
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".txt",
+        ".md",
+        ".csv",
+        ".xlsx",
+        ".pptx",
+      ]
+
+      const extension = file.name.includes(".")
+        ? `.${file.name.split(".").pop()?.toLowerCase()}`
+        : ""
+
+      if (!allowedExtensions.includes(extension)) {
+        throw new Error(
+          "Unsupported file type. Use PDF, DOC, DOCX, TXT, MD, CSV, XLSX, or PPTX.",
+        )
+      }
+
+      const formData = new FormData()
+
+      formData.append("workspace_id", WORKSPACE_ID)
+      formData.append("file", file)
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/workspaces/${WORKSPACE_ID}/documents`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      )
+
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ??
+            `Upload failed: ${response.status}`,
+        )
+      }
+
+      // Refresh daftar setelah upload berhasil
+      await loadDocuments()
+    } catch (requestError) {
+      console.error(
+        "Failed to upload document:",
+        requestError,
+      )
+
+      setUploadError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to upload document.",
+      )
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  async function loadDocuments(
+    showLoading = false,
+  ) {
     setError("")
-    setIsLoading(true)
+
+    if (showLoading) {
+      setIsLoading(true)
+    }
 
     try {
       const response = await fetch(
@@ -196,17 +317,13 @@ export default function DocumentsPage() {
       const data: Document[] =
         await response.json()
 
-      const sortedDocuments = [
-        ...data,
-      ].sort(
+      const sortedDocuments = [...data].sort(
         (a, b) =>
           new Date(b.updated_at).getTime() -
           new Date(a.updated_at).getTime(),
       )
 
-      setDocuments(
-        sortedDocuments,
-      )
+      setDocuments(sortedDocuments)
     } catch (requestError) {
       console.error(
         "Failed to load documents:",
@@ -214,16 +331,163 @@ export default function DocumentsPage() {
       )
 
       setError(
-        "Unable to load your documents.",
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to load your documents.",
       )
     } finally {
-      setIsLoading(false)
+      if (showLoading) {
+        setIsLoading(false)
+      }
+    }
+  }
+
+  async function handleRename() {
+    if (!renameTarget) {
+      return
+    }
+
+    const trimmedName = renameValue.trim()
+
+    if (!trimmedName) {
+      return
+    }
+
+    try {
+      setIsRenaming(true)
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/workspaces/${WORKSPACE_ID}/documents/${renameTarget.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: trimmedName,
+          }),
+        },
+      )
+
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ?? "Failed to rename document",
+        )
+      }
+
+      setDocuments((current) =>
+        current.map((document) =>
+          document.id === renameTarget.id
+            ? data
+            : document,
+        ),
+      )
+
+      setRenameTarget(null)
+      setRenameValue("")
+    } catch (requestError) {
+      console.error(
+        "Failed to rename document:",
+        requestError,
+      )
+
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to rename document.",
+      )
+    } finally {
+      setIsRenaming(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) {
+      return
+    }
+
+    try {
+      setIsDeleting(true)
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/workspaces/${WORKSPACE_ID}/documents/${deleteTarget.id}`,
+        {
+          method: "DELETE",
+        },
+      )
+
+      if (!response.ok) {
+        const body = await response.text()
+
+        let message = ""
+
+        try {
+          const data = JSON.parse(body)
+          message = data?.error ?? ""
+        } catch {
+          message = body
+        }
+
+        throw new Error(
+          message || `Delete failed (${response.status})`,
+        )
+      }
+
+      setDocuments((current) =>
+        current.filter(
+          (document) =>
+            document.id !== deleteTarget.id,
+        ),
+      )
+
+      setDeleteTarget(null)
+    } catch (requestError) {
+      console.error(
+        "Failed to delete document:",
+        requestError,
+      )
+
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to delete document.",
+      )
+    } finally {
+      setIsDeleting(false)
     }
   }
 
   useEffect(() => {
-    void loadDocuments()
+    void loadDocuments(true)
   }, [])
+
+  useEffect(() => {
+    const hasProcessingDocuments = documents.some(
+      (document) => {
+        const status =
+          document.processing_status.toLowerCase()
+
+        return (
+          status === "pending" ||
+          status === "processing"
+        )
+      },
+    )
+
+    if (!hasProcessingDocuments) {
+      return
+    }
+
+    const interval = window.setInterval(() => {
+      void loadDocuments(false)
+    }, 2000)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [documents])
 
   const filteredDocuments = useMemo(() => {
     const query =
@@ -269,14 +533,48 @@ export default function DocumentsPage() {
             </p>
           </div>
 
-          <button className="flex items-center gap-2 rounded-xl bg-[#8E3A59] px-4 py-2.5 text-sm font-medium text-white shadow-[0_8px_24px_rgba(142,58,89,0.18)] transition hover:bg-[#9d4564]">
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept=".pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.pptx"
+              onChange={handleUpload}
+            />
+
+            <button
+              type="button"
+              onClick={handleOpenUpload}
+              disabled={isUploading}
+              className="flex items-center gap-2 rounded-xl bg-[#8E3A59] px-4 py-2.5 text-sm font-medium text-white shadow-[0_8px_24px_rgba(142,58,89,0.18)] transition hover:bg-[#9d4564] disabled:cursor-not-allowed disabled:opacity-50"
+            >
             <Upload
               size={17}
               strokeWidth={1.9}
             />
-            Upload Document
-          </button>
+
+              {isUploading
+                ? "Uploading..."
+                : "Upload Document"}
+            </button>
+          </div>
         </div>
+
+        {uploadError && (
+          <div className="mt-5 flex items-center justify-between rounded-xl border border-red-400/10 bg-red-400/[0.035] px-4 py-3">
+            <p className="text-xs text-red-300/75">
+              {uploadError}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setUploadError("")}
+              className="text-xs text-white/30 transition hover:text-white/60"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Toolbar */}
         <div className="mt-8 flex items-center gap-3">
@@ -422,12 +720,22 @@ export default function DocumentsPage() {
                     getStatusStyles(
                       document.processing_status,
                     )
+                  const isProcessing =
+                    document.processing_status.toLowerCase() ===
+                      "processing" ||
+                    document.processing_status.toLowerCase() ===
+                      "pending"
 
                   return (
-                    <button
+                    <div
                       key={document.id}
-                      type="button"
-                      className="group rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-white/[0.14] hover:bg-white/[0.035]"
+                      className={[
+                        "group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 text-left transition duration-200",
+                        "hover:-translate-y-0.5 hover:border-white/[0.14] hover:bg-white/[0.035]",
+                        isProcessing
+                          ? "document-processing-shimmer"
+                          : "",
+                      ].join(" ")}
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/[0.05]">
@@ -440,16 +748,66 @@ export default function DocumentsPage() {
                           />
                         </div>
 
-                        <MoreHorizontal
-                          size={18}
-                          className="text-white/25 transition group-hover:text-white/50"
-                        />
+                        <div className="relative">
+                          <button
+                            type="button"
+                            aria-label={`More actions for ${
+                              document.original_name ||
+                              document.name
+                            }`}
+                            onClick={(event) => {
+                              event.stopPropagation()
+
+                              setMenuDocumentId((current) =>
+                                current === document.id
+                                  ? null
+                                  : document.id,
+                              )
+                            }}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-white/25 transition hover:bg-white/[0.06] hover:text-white/70"
+                          >
+                            <MoreHorizontal size={18} />
+                          </button>
+
+                          {menuDocumentId === document.id && (
+                            <div className="absolute right-0 top-10 z-30 w-36 overflow-hidden rounded-xl border border-white/[0.08] bg-[#1d1d21] p-1 shadow-2xl shadow-black/40">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMenuDocumentId(null)
+                                  setRenameTarget(document)
+                                  setRenameValue(
+                                    document.name ||
+                                      document.original_name ||
+                                      "",
+                                  )
+                                }}
+                                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-white transition hover:bg-white/[0.05]"
+                              >
+                                <Pencil className="h-4 w-4" />
+                                Rename
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMenuDocumentId(null)
+                                  setDeleteTarget(document)
+                                }}
+                                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-red-400 transition hover:bg-white/[0.05]"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       <div className="mt-5">
                         <div className="truncate text-sm font-medium text-white/85">
-                          {document.original_name ||
-                            document.name}
+                          {document.name ||
+                            document.original_name}
                         </div>
 
                         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-white/35">
@@ -504,7 +862,7 @@ export default function DocumentsPage() {
                           </span>
                         </div>
                       </div>
-                    </button>
+                    </div>
                   )
                 },
               )}
@@ -547,8 +905,8 @@ export default function DocumentsPage() {
 
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium text-white/80">
-                          {document.original_name ||
-                            document.name}
+                          {document.name ||
+                            document.original_name}
                         </div>
 
                         <div className="mt-1 flex items-center gap-1.5 text-[11px] text-white/30">
@@ -612,6 +970,139 @@ export default function DocumentsPage() {
             </div>
           )}
       </div>
+
+      {renameTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+          onMouseDown={() => {
+            if (!isRenaming) {
+              setRenameTarget(null)
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-white/[0.08] bg-[#1c1c20] p-6 shadow-2xl shadow-black/50"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 className="text-[15px] font-medium text-white">
+              Rename document
+            </h2>
+
+            <p className="mt-2 text-[13px] leading-6 text-white/40">
+              Choose a new name for this document.
+            </p>
+
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={(event) =>
+                setRenameValue(event.target.value)
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void handleRename()
+                }
+
+                if (event.key === "Escape") {
+                  setRenameTarget(null)
+                }
+              }}
+              className="mt-5 w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/20 focus:border-[#8E3A59]/50"
+            />
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={isRenaming}
+                onClick={() => setRenameTarget(null)}
+                className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-4 py-2 text-xs font-medium text-white/60 transition hover:bg-white/[0.06] hover:text-white"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={
+                  isRenaming ||
+                  !renameValue.trim()
+                }
+                onClick={() => {
+                  void handleRename()
+                }}
+                className="rounded-lg bg-[#8E3A59] px-4 py-2 text-xs font-medium text-white transition hover:bg-[#9d4564] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isRenaming
+                  ? "Renaming..."
+                  : "Rename"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+          onMouseDown={() => {
+            if (!isDeleting) {
+              setDeleteTarget(null)
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-white/[0.08] bg-[#1c1c20] p-6 shadow-2xl shadow-black/50"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-red-400/10 bg-red-400/[0.07]">
+              <Trash2
+                size={18}
+                className="text-red-300"
+              />
+            </div>
+
+            <h2 className="text-[15px] font-medium text-white">
+              Delete document?
+            </h2>
+
+            <p className="mt-2 text-[13px] leading-6 text-white/50">
+              Are you sure you want to delete{" "}
+              <span className="font-medium text-white/80">
+                "{deleteTarget.name ||
+                  deleteTarget.original_name}"
+              </span>
+              ?
+              <br />
+              This action cannot be undone.
+            </p>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() =>
+                  setDeleteTarget(null)
+                }
+                className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-4 py-2 text-xs font-medium text-white/60 transition hover:bg-white/[0.06] hover:text-white"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => {
+                  void handleDelete()
+                }}
+                className="rounded-lg bg-red-400/[0.12] px-4 py-2 text-xs font-medium text-red-300 transition hover:bg-red-400/[0.18] hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isDeleting
+                  ? "Deleting..."
+                  : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
-}
+} 

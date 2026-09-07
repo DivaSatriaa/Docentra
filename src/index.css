@@ -25,3 +25,44 @@ body {
   min-width: 320px;
   background: #222224;
 }
+
+.document-processing-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.document-processing-shimmer::after {
+  content: "";
+  position: absolute;
+  top: -100%;
+  left: -70%;
+  width: 28%;
+  height: 300%;
+  transform: rotate(25deg);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(196, 106, 138, 0.07),
+    rgba(255, 255, 255, 0.08),
+    rgba(196, 106, 138, 0.07),
+    transparent
+  );
+  animation: document-shimmer 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes document-shimmer {
+  from {
+    left: -70%;
+  }
+
+  to {
+    left: 140%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .document-processing-shimmer::after {
+    animation: none;
+  }
+}

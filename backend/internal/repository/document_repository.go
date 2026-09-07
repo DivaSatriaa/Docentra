@@ -1,5 +1,4 @@
 package repository
-
 import (
 	"context"
 	"fmt"
@@ -193,6 +192,119 @@ func (r *DocumentRepository) GetByID(
 		}
 
 		return nil, fmt.Errorf("get document: %w", err)
+	}
+
+	return &document, nil
+}
+
+func (r *DocumentRepository) UpdateName(
+	ctx context.Context,
+	id string,
+	name string,
+) (*model.Document, error) {
+	query := `
+		UPDATE documents
+		SET
+			name = $1,
+			updated_at = NOW()
+		WHERE id = $2
+		RETURNING
+			id,
+			workspace_id,
+			name,
+			original_name,
+			mime_type,
+			extension,
+			file_size,
+			storage_path,
+			processing_status,
+			page_count,
+			created_at,
+			updated_at
+	`
+
+	var document model.Document
+
+	err := r.db.QueryRow(
+		ctx,
+		query,
+		name,
+		id,
+	).Scan(
+		&document.ID,
+		&document.WorkspaceID,
+		&document.Name,
+		&document.OriginalName,
+		&document.MimeType,
+		&document.Extension,
+		&document.FileSize,
+		&document.StoragePath,
+		&document.ProcessingStatus,
+		&document.PageCount,
+		&document.CreatedAt,
+		&document.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, fmt.Errorf("document not found")
+		}
+
+		return nil, fmt.Errorf("update document name: %w", err)
+	}
+
+	return &document, nil
+}
+
+func (r *DocumentRepository) Delete(
+	ctx context.Context,
+	id string,
+) (*model.Document, error) {
+	query := `
+		DELETE FROM documents
+		WHERE id = $1
+		RETURNING
+			id,
+			workspace_id,
+			name,
+			original_name,
+			mime_type,
+			extension,
+			file_size,
+			storage_path,
+			processing_status,
+			page_count,
+			created_at,
+			updated_at
+	`
+
+	var document model.Document
+
+	err := r.db.QueryRow(
+		ctx,
+		query,
+		id,
+	).Scan(
+		&document.ID,
+		&document.WorkspaceID,
+		&document.Name,
+		&document.OriginalName,
+		&document.MimeType,
+		&document.Extension,
+		&document.FileSize,
+		&document.StoragePath,
+		&document.ProcessingStatus,
+		&document.PageCount,
+		&document.CreatedAt,
+		&document.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, fmt.Errorf("document not found")
+		}
+
+		return nil, fmt.Errorf("delete document: %w", err)
 	}
 
 	return &document, nil
