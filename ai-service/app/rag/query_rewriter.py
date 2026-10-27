@@ -1,26 +1,12 @@
-import os
-
-import requests
-from dotenv import load_dotenv
-
-
-load_dotenv()
-
-
-OLLAMA_URL = os.getenv(
-    "OLLAMA_URL",
-    "http://localhost:11434",
-)
-
-OLLAMA_MODEL = os.getenv(
-    "OLLAMA_MODEL",
-    "qwen3:4b-instruct",
-)
+from app.rag.llm import complete
 
 
 def rewrite_query(
     question: str,
     history: list[dict],
+    *,
+    provider: str | None = None,
+    model: str | None = None,
 ) -> str:
     question = question.strip()
 
@@ -55,20 +41,10 @@ Latest user question:
 Standalone search query:
 """.strip()
 
-    response = requests.post(
-        f"{OLLAMA_URL}/api/generate",
-        json={
-            "model": OLLAMA_MODEL,
-            "prompt": prompt,
-            "stream": False,
-        },
-        timeout=300,
+    rewritten = complete(
+        prompt,
+        provider=provider,
+        model=model,
     )
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    rewritten = data["response"].strip()
 
     return rewritten or question

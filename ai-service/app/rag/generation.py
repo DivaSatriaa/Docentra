@@ -1,26 +1,12 @@
-import os
-
-import requests
-from dotenv import load_dotenv
-
-
-load_dotenv()
-
-
-OLLAMA_URL = os.getenv(
-    "OLLAMA_URL",
-    "http://localhost:11434",
-)
-
-OLLAMA_MODEL = os.getenv(
-    "OLLAMA_MODEL",
-    "qwen3:4b-instruct",
-)
+from app.rag.llm import complete
 
 
 def generate_answer(
     question: str,
     context: str,
+    *,
+    provider: str | None = None,
+    model: str | None = None,
 ) -> str:
     prompt = f"""
 You are Docentra, an AI assistant that answers questions
@@ -42,18 +28,8 @@ USER QUESTION:
 ANSWER:
 """.strip()
 
-    response = requests.post(
-        f"{OLLAMA_URL}/api/generate",
-        json={
-            "model": OLLAMA_MODEL,
-            "prompt": prompt,
-            "stream": False,
-        },
-        timeout=300,
+    return complete(
+        prompt,
+        provider=provider,
+        model=model,
     )
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    return data["response"].strip()

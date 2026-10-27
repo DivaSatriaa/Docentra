@@ -21,7 +21,9 @@ func NewMessageHandler(
 }
 
 type createMessageRequest struct {
-	Content string `json:"content"`
+	Content  string `json:"content"`
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
 }
 
 func (h *MessageHandler) Create(c *gin.Context) {
@@ -40,6 +42,10 @@ func (h *MessageHandler) Create(c *gin.Context) {
 		c.Request.Context(),
 		conversationID,
 		req.Content,
+		service.ChatOptions{
+			Provider: req.Provider,
+			Model:    req.Model,
+		},
 	)
 	if err != nil {
 		if err.Error() == "conversation not found" {
