@@ -65,6 +65,10 @@ func Setup(
 		messageService,
 	)
 
+	llmHandler := handler.NewLLMHandler(
+		aiClient,
+	)
+
 	// =========================
 	// Health
 	// =========================
@@ -97,6 +101,15 @@ func Setup(
 	// =========================
 
 	api := r.Group("/api/v1")
+
+	// =========================
+	// LLM Providers
+	// =========================
+
+	api.GET(
+		"/llm/providers",
+		llmHandler.ListProviders,
+	)
 
 	// =========================
 	// Workspaces

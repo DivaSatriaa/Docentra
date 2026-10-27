@@ -13,6 +13,9 @@ import { useEffect, useState } from "react"
 
 import logo from "../../assets/docentra-logo.png"
 import FileTypeIcon from "../common/FileTypeIcon"
+import ModelSelector, {
+  type LLMSelection,
+} from "./ModelSelector"
 
 const API_BASE_URL = "http://localhost:8080"
 
@@ -50,6 +53,8 @@ interface SidebarProps {
     deletedId: string,
     replacementId: string | null,
   ) => void
+  llmSelection: LLMSelection
+  onChangeLLM: (selection: LLMSelection) => void
 }
 
 export default function Sidebar({
@@ -59,6 +64,8 @@ export default function Sidebar({
   onSelectConversation,
   onNewChat,
   onDeleteConversation,
+  llmSelection,
+  onChangeLLM,
 }: SidebarProps) {
   const [conversations, setConversations] = useState<
     Conversation[]
@@ -233,6 +240,14 @@ export default function Sidebar({
             <Plus size={18} strokeWidth={2} />
             New Chat
           </button>
+        </div>
+
+        {/* Model */}
+        <div className="px-5 pt-3">
+          <ModelSelector
+            selection={llmSelection}
+            onChange={onChangeLLM}
+          />
         </div>
 
         {/* Navigation */}

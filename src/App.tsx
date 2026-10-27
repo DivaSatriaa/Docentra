@@ -2,6 +2,7 @@ import { useState } from "react"
 
 import Sidebar from "./components/layout/Sidebar"
 import MainChat from "./components/layout/MainChat"
+import useLLMSelection from "./components/layout/useLLMSelection"
 import DocumentsPage from "./pages/DocumentsPage"
 import CollectionsPage from "./pages/CollectionsPage"
 import HistoryPage from "./pages/HistoryPage"
@@ -36,6 +37,9 @@ function App() {
 
   const [isCreatingConversation, setIsCreatingConversation] =
     useState(false)
+
+  const [llmSelection, setLLMSelection] =
+    useLLMSelection()
 
   async function handleNewChat() {
     if (isCreatingConversation) {
@@ -118,11 +122,14 @@ function App() {
         onDeleteConversation={
           handleDeleteConversation
         }
+        llmSelection={llmSelection}
+        onChangeLLM={setLLMSelection}
       />
 
       {page === "chat" ? (
         <MainChat
           conversationId={conversationId}
+          llmSelection={llmSelection}
         />
       ) : page === "documents" ? (
         <DocumentsPage />

@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.rag.chat import chat
+from app.rag.llm import PROVIDERS, list_providers
 from app.services.document_processor import process_document
 
 
@@ -34,6 +35,9 @@ class ChatRequest(BaseModel):
         le=20,
     )
 
+    provider: str | None = None
+    model: str | None = None
+
 
 @router.post("/internal/process-document")
 async def process_document_route(
@@ -59,10 +63,26 @@ async def process_document_route(
         ) from error
 
 
+@router.get("/internal/llm/providers")
+async def list_providers_route():
+    return {
+        "providers": list_providers(),
+    }
+
+
 @router.post("/internal/chat")
 async def chat_route(
     request: ChatRequest,
 ):
+    if (
+        request.provider
+        and request.provider not in PROVIDERS
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown provider: {request.provider}",
+        )
+
     try:
         history = [
             {
@@ -79,6 +99,8 @@ async def chat_route(
             document_ids=request.document_ids,
             collection_id=request.collection_id,
             top_k=request.top_k,
+            provider=request.provider,
+            model=request.model,
         )
 
         return result

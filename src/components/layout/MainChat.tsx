@@ -8,6 +8,7 @@ import {
 import { useEffect, useState } from "react"
 
 import FileTypeIcon from "../common/FileTypeIcon"
+import type { LLMSelection } from "./ModelSelector"
 
 const API_BASE_URL = "http://localhost:8080"
 
@@ -78,10 +79,12 @@ type ApiResponse = {
 
 interface MainChatProps {
   conversationId: string
+  llmSelection: LLMSelection
 }
 
 export default function MainChat({
   conversationId,
+  llmSelection,
 }: MainChatProps) {
   const [question, setQuestion] = useState("")
   const [messages, setMessages] = useState<Message[]>([])
@@ -183,6 +186,8 @@ export default function MainChat({
           },
           body: JSON.stringify({
             content: trimmedQuestion,
+            provider: llmSelection.provider,
+            model: llmSelection.model ?? undefined,
           }),
         },
       )

@@ -92,6 +92,8 @@ type ChatRequest struct {
 	DocumentIDs  []string             `json:"document_ids,omitempty"`
 	CollectionID string               `json:"collection_id,omitempty"`
 	TopK         int                  `json:"top_k"`
+	Provider     string               `json:"provider,omitempty"`
+	Model        string               `json:"model,omitempty"`
 }
 
 type Citation struct {
@@ -162,6 +164,65 @@ func (c *AIClient) Chat(
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf(
 			"decode AI chat response: %w",
+			err,
+		)
+	}
+
+	return &result, nil
+}
+
+type LLMProvider struct {
+	ID           string   `json:"id"`
+	Label        string   `json:"label"`
+	Available    bool     `json:"available"`
+	Error        *string  `json:"error"`
+	DefaultModel *string  `json:"default_model"`
+	Models       []string `json:"models"`
+}
+
+type ListProvidersResponse struct {
+	Providers []LLMProvider `json:"providers"`
+}
+
+func (c *AIClient) ListProviders(
+	ctx context.Context,
+) (*ListProvidersResponse, error) {
+	url := c.baseURL + "/internal/llm/providers"
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		url,
+		nil,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"create list providers request: %w",
+			err,
+		)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"call AI providers service: %w",
+			err,
+		)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf(
+			"AI providers service returned HTTP %d",
+			resp.StatusCode,
+		)
+	}
+
+	var result ListProvidersResponse
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf(
+			"decode AI providers response: %w",
 			err,
 		)
 	}
