@@ -3,6 +3,8 @@ import os
 import requests
 from dotenv import load_dotenv
 
+from app.settings_store import get_setting, set_setting
+
 
 load_dotenv()
 
@@ -22,10 +24,7 @@ DEEPSEEK_URL = os.getenv(
     "https://api.deepseek.com",
 )
 
-DEEPSEEK_API_KEY = os.getenv(
-    "DEEPSEEK_API_KEY",
-    "",
-)
+DEEPSEEK_API_KEY_SETTING = "deepseek_api_key"
 
 DEEPSEEK_MODEL = os.getenv(
     "DEEPSEEK_MODEL",
@@ -94,15 +93,17 @@ def _complete_deepseek(
     prompt: str,
     model: str,
 ) -> str:
-    if not DEEPSEEK_API_KEY:
+    api_key = get_deepseek_api_key()
+
+    if not api_key:
         raise ValueError(
-            "DEEPSEEK_API_KEY is not configured"
+            "DeepSeek API key is not configured"
         )
 
     response = requests.post(
         f"{DEEPSEEK_URL}/chat/completions",
         headers={
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Authorization": f"Bearer {api_key}",
         },
         json={
             "model": model,
@@ -142,15 +143,91 @@ def list_ollama_models() -> list[str]:
     )
 
 
+def get_deepseek_api_key() -> str:
+    # A key saved from the Settings page wins over .env.
+    return (
+        get_setting(DEEPSEEK_API_KEY_SETTING)
+        or os.getenv("DEEPSEEK_API_KEY", "")
+    )
+
+
+def get_deepseek_key_status() -> dict:
+    saved_key = get_setting(DEEPSEEK_API_KEY_SETTING)
+    api_key = get_deepseek_api_key()
+
+    if saved_key:
+        source = "settings"
+    elif api_key:
+        source = "env"
+    else:
+        source = None
+
+    return {
+        "configured": bool(api_key),
+        "source": source,
+        "masked_key": _mask_key(api_key) if api_key else None,
+    }
+
+
+def save_deepseek_api_key(api_key: str) -> dict:
+    api_key = api_key.strip()
+
+    if not api_key:
+        raise ValueError("api_key is required")
+
+    # Reject keys DeepSeek says are wrong; if DeepSeek
+    # can't be reached, save the key anyway.
+    try:
+        response = requests.get(
+            f"{DEEPSEEK_URL}/models",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+            },
+            timeout=10,
+        )
+
+        if response.status_code in (401, 403):
+            raise ValueError(
+                "DeepSeek rejected this API key"
+            )
+
+        verified = response.ok
+
+    except requests.RequestException:
+        verified = False
+
+    set_setting(DEEPSEEK_API_KEY_SETTING, api_key)
+
+    return {
+        **get_deepseek_key_status(),
+        "verified": verified,
+    }
+
+
+def remove_deepseek_api_key() -> dict:
+    set_setting(DEEPSEEK_API_KEY_SETTING, None)
+
+    return get_deepseek_key_status()
+
+
+def _mask_key(api_key: str) -> str:
+    if len(api_key) <= 8:
+        return "•" * len(api_key)
+
+    return f"{api_key[:3]}…{api_key[-4:]}"
+
+
 def list_deepseek_models() -> list[str]:
-    if not DEEPSEEK_API_KEY:
+    api_key = get_deepseek_api_key()
+
+    if not api_key:
         return []
 
     try:
         response = requests.get(
             f"{DEEPSEEK_URL}/models",
             headers={
-                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+                "Authorization": f"Bearer {api_key}",
             },
             timeout=5,
         )
@@ -184,6 +261,7 @@ def list_providers() -> list[dict]:
         ollama_error = "Ollama is not reachable"
 
     deepseek_models = list_deepseek_models()
+    deepseek_configured = bool(get_deepseek_api_key())
 
     return [
         {
@@ -201,15 +279,15 @@ def list_providers() -> list[dict]:
         {
             "id": PROVIDER_DEEPSEEK,
             "label": "DeepSeek API",
-            "available": bool(DEEPSEEK_API_KEY),
+            "available": deepseek_configured,
             "error": (
                 None
-                if DEEPSEEK_API_KEY
-                else "DEEPSEEK_API_KEY is not configured"
+                if deepseek_configured
+                else "Add your DeepSeek API key in Settings"
             ),
             "default_model": (
                 DEEPSEEK_MODEL
-                if DEEPSEEK_API_KEY
+                if deepseek_configured
                 else None
             ),
             "models": deepseek_models,

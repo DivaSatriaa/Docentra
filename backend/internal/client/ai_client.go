@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -228,4 +229,165 @@ func (c *AIClient) ListProviders(
 	}
 
 	return &result, nil
+}
+
+// AIServiceError carries the status and detail returned by the
+// AI service so handlers can show the user what went wrong.
+type AIServiceError struct {
+	StatusCode int
+	Detail     string
+}
+
+func (e *AIServiceError) Error() string {
+	if e.Detail != "" {
+		return e.Detail
+	}
+
+	return fmt.Sprintf(
+		"AI service returned HTTP %d",
+		e.StatusCode,
+	)
+}
+
+type DeepSeekKeyStatus struct {
+	Configured bool    `json:"configured"`
+	Source     *string `json:"source"`
+	MaskedKey  *string `json:"masked_key"`
+	Verified   *bool   `json:"verified,omitempty"`
+}
+
+type LLMSettings struct {
+	DeepSeek DeepSeekKeyStatus `json:"deepseek"`
+}
+
+type saveAPIKeyRequest struct {
+	APIKey string `json:"api_key"`
+}
+
+func (c *AIClient) GetLLMSettings(
+	ctx context.Context,
+) (*LLMSettings, error) {
+	var result LLMSettings
+
+	err := c.doSettingsRequest(
+		ctx,
+		http.MethodGet,
+		"/internal/settings/llm",
+		nil,
+		&result,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+func (c *AIClient) SaveDeepSeekAPIKey(
+	ctx context.Context,
+	apiKey string,
+) (*LLMSettings, error) {
+	var result LLMSettings
+
+	err := c.doSettingsRequest(
+		ctx,
+		http.MethodPut,
+		"/internal/settings/llm/deepseek-api-key",
+		saveAPIKeyRequest{APIKey: apiKey},
+		&result,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+func (c *AIClient) RemoveDeepSeekAPIKey(
+	ctx context.Context,
+) (*LLMSettings, error) {
+	var result LLMSettings
+
+	err := c.doSettingsRequest(
+		ctx,
+		http.MethodDelete,
+		"/internal/settings/llm/deepseek-api-key",
+		nil,
+		&result,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+func (c *AIClient) doSettingsRequest(
+	ctx context.Context,
+	method string,
+	path string,
+	payload any,
+	result any,
+) error {
+	var body io.Reader
+
+	if payload != nil {
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf(
+				"marshal settings request: %w",
+				err,
+			)
+		}
+
+		body = bytes.NewReader(encoded)
+	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		method,
+		c.baseURL+path,
+		body,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"create settings request: %w",
+			err,
+		)
+	}
+
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf(
+			"call AI settings service: %w",
+			err,
+		)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var errorBody struct {
+			Detail string `json:"detail"`
+		}
+
+		_ = json.NewDecoder(resp.Body).Decode(&errorBody)
+
+		return &AIServiceError{
+			StatusCode: resp.StatusCode,
+			Detail:     errorBody.Detail,
+		}
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
+		return fmt.Errorf(
+			"decode AI settings response: %w",
+			err,
+		)
+	}
+
+	return nil
 }

@@ -42,11 +42,16 @@ const providerLabels: Record<LLMProviderId, string> = {
 interface ModelSelectorProps {
   selection: LLMSelection
   onChange: (selection: LLMSelection) => void
+  // Bump to reload providers, e.g. after an API key changes.
+  refreshKey?: number
+  onOpenSettings?: () => void
 }
 
 export default function ModelSelector({
   selection,
   onChange,
+  refreshKey = 0,
+  onOpenSettings,
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
 
@@ -102,7 +107,7 @@ export default function ModelSelector({
 
   useEffect(() => {
     void fetchProviders()
-  }, [])
+  }, [refreshKey])
 
   // Fill in a model when the saved one is missing or
   // no longer installed.
@@ -285,6 +290,19 @@ export default function ModelSelector({
               <div className="px-2 py-2 text-[11px] text-amber-200/60">
                 {activeProvider.error ??
                   "This provider is unavailable."}
+
+                {activeProvider.id === "deepseek" &&
+                  onOpenSettings && (
+                    <button
+                      onClick={() => {
+                        setIsOpen(false)
+                        onOpenSettings()
+                      }}
+                      className="mt-2 block rounded-md bg-white/[0.05] px-2 py-1 text-[11px] font-medium text-white/70 transition hover:bg-white/[0.08] hover:text-white"
+                    >
+                      Open Settings
+                    </button>
+                  )}
               </div>
             ) : activeProvider.models.length === 0 ? (
               <div className="px-2 py-2 text-[11px] text-white/25">
