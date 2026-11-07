@@ -112,6 +112,28 @@ func Setup(
 	)
 
 	// =========================
+	// Settings
+	// =========================
+
+	settings := api.Group("/settings")
+	{
+		settings.GET(
+			"/llm",
+			llmHandler.GetSettings,
+		)
+
+		settings.PUT(
+			"/llm/deepseek-api-key",
+			llmHandler.SaveDeepSeekAPIKey,
+		)
+
+		settings.DELETE(
+			"/llm/deepseek-api-key",
+			llmHandler.RemoveDeepSeekAPIKey,
+		)
+	}
+
+	// =========================
 	// Workspaces
 	// =========================
 

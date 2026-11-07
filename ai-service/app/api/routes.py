@@ -2,7 +2,13 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.rag.chat import chat
-from app.rag.llm import PROVIDERS, list_providers
+from app.rag.llm import (
+    PROVIDERS,
+    get_deepseek_key_status,
+    list_providers,
+    remove_deepseek_api_key,
+    save_deepseek_api_key,
+)
 from app.services.document_processor import process_document
 
 
@@ -11,6 +17,10 @@ router = APIRouter()
 
 class ProcessDocumentRequest(BaseModel):
     document_id: str
+
+
+class SaveAPIKeyRequest(BaseModel):
+    api_key: str
 
 
 class ChatMessage(BaseModel):
@@ -67,6 +77,38 @@ async def process_document_route(
 async def list_providers_route():
     return {
         "providers": list_providers(),
+    }
+
+
+@router.get("/internal/settings/llm")
+async def get_llm_settings_route():
+    return {
+        "deepseek": get_deepseek_key_status(),
+    }
+
+
+@router.put("/internal/settings/llm/deepseek-api-key")
+async def save_deepseek_api_key_route(
+    request: SaveAPIKeyRequest,
+):
+    try:
+        return {
+            "deepseek": save_deepseek_api_key(
+                request.api_key,
+            ),
+        }
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+
+@router.delete("/internal/settings/llm/deepseek-api-key")
+async def remove_deepseek_api_key_route():
+    return {
+        "deepseek": remove_deepseek_api_key(),
     }
 
 

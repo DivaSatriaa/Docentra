@@ -16,6 +16,7 @@ import FileTypeIcon from "../common/FileTypeIcon"
 import ModelSelector, {
   type LLMSelection,
 } from "./ModelSelector"
+import SettingsModal from "./SettingsModal"
 
 const API_BASE_URL = "http://localhost:8080"
 
@@ -86,6 +87,12 @@ export default function Sidebar({
 
   const [isDeletingConversation, setIsDeletingConversation] =
     useState(false)
+
+  const [isSettingsOpen, setIsSettingsOpen] =
+    useState(false)
+
+  const [providersVersion, setProvidersVersion] =
+    useState(0)
   
 
   async function loadConversations() {
@@ -247,6 +254,10 @@ export default function Sidebar({
           <ModelSelector
             selection={llmSelection}
             onChange={onChangeLLM}
+            refreshKey={providersVersion}
+            onOpenSettings={() =>
+              setIsSettingsOpen(true)
+            }
           />
         </div>
 
@@ -419,7 +430,10 @@ export default function Sidebar({
           </div>
 
           {/* Settings */}
-          <button className="mb-4 flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-sm text-white/55 transition hover:bg-white/[0.04] hover:text-white">
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="mb-4 flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-sm text-white/55 transition hover:bg-white/[0.04] hover:text-white"
+          >
             <Settings
               size={17}
               strokeWidth={1.8}
@@ -522,6 +536,17 @@ export default function Sidebar({
             </div>
           </div>
         </div>
+      )}
+
+      {isSettingsOpen && (
+        <SettingsModal
+          onClose={() => setIsSettingsOpen(false)}
+          onSettingsChanged={() =>
+            setProvidersVersion(
+              (version) => version + 1,
+            )
+          }
+        />
       )}
     </aside>
   )

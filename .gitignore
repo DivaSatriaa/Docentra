@@ -27,3 +27,6 @@ backend/storage/
 ai-service/.venv/
 __pycache__/
 *.pyc
+
+# AI service settings (holds API keys)
+ai-service/data/
