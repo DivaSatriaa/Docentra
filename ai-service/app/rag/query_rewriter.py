@@ -1,12 +1,10 @@
-from app.rag.llm import complete
+from app.rag.llm import generate
 
 
 def rewrite_query(
     question: str,
     history: list[dict],
-    *,
-    provider: str | None = None,
-    model: str | None = None,
+    llm: dict | None = None,
 ) -> str:
     question = question.strip()
 
@@ -41,10 +39,6 @@ Latest user question:
 Standalone search query:
 """.strip()
 
-    rewritten = complete(
-        prompt,
-        provider=provider,
-        model=model,
-    )
+    rewritten = generate(prompt, llm)
 
     return rewritten or question

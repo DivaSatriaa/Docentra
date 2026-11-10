@@ -1,12 +1,10 @@
-from app.rag.llm import complete
+from app.rag.llm import generate
 
 
 def generate_answer(
     question: str,
     context: str,
-    *,
-    provider: str | None = None,
-    model: str | None = None,
+    llm: dict | None = None,
 ) -> str:
     prompt = f"""
 You are Docentra, an AI assistant that answers questions
@@ -28,8 +26,4 @@ USER QUESTION:
 ANSWER:
 """.strip()
 
-    return complete(
-        prompt,
-        provider=provider,
-        model=model,
-    )
+    return generate(prompt, llm)

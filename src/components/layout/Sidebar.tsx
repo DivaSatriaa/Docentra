@@ -13,9 +13,6 @@ import { useEffect, useState } from "react"
 
 import logo from "../../assets/docentra-logo.png"
 import FileTypeIcon from "../common/FileTypeIcon"
-import ModelSelector, {
-  type LLMSelection,
-} from "./ModelSelector"
 
 const API_BASE_URL = "http://localhost:8080"
 
@@ -34,6 +31,7 @@ type Page =
   | "documents"
   | "collections"
   | "history"
+  | "settings"
 
 type Conversation = {
   id: string
@@ -53,8 +51,6 @@ interface SidebarProps {
     deletedId: string,
     replacementId: string | null,
   ) => void
-  llmSelection: LLMSelection
-  onChangeLLM: (selection: LLMSelection) => void
 }
 
 export default function Sidebar({
@@ -64,8 +60,6 @@ export default function Sidebar({
   onSelectConversation,
   onNewChat,
   onDeleteConversation,
-  llmSelection,
-  onChangeLLM,
 }: SidebarProps) {
   const [conversations, setConversations] = useState<
     Conversation[]
@@ -242,14 +236,6 @@ export default function Sidebar({
           </button>
         </div>
 
-        {/* Model */}
-        <div className="px-5 pt-3">
-          <ModelSelector
-            selection={llmSelection}
-            onChange={onChangeLLM}
-          />
-        </div>
-
         {/* Navigation */}
         <nav className="px-3 pt-4">
           <SidebarItem
@@ -419,7 +405,15 @@ export default function Sidebar({
           </div>
 
           {/* Settings */}
-          <button className="mb-4 flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-sm text-white/55 transition hover:bg-white/[0.04] hover:text-white">
+          <button
+            onClick={() => onNavigate("settings")}
+            className={[
+              "mb-4 flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-sm transition",
+              activePage === "settings"
+                ? "bg-white/[0.07] text-white"
+                : "text-white/55 hover:bg-white/[0.04] hover:text-white",
+            ].join(" ")}
+          >
             <Settings
               size={17}
               strokeWidth={1.8}
@@ -552,4 +546,4 @@ function SidebarItem({
       <span>{label}</span>
     </button>
   )
-}
+}

@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.rag.chat import chat
-from app.rag.llm import PROVIDERS, list_providers
+from app.rag.llm import list_models
 from app.services.document_processor import process_document
 
 
@@ -18,6 +18,19 @@ class ChatMessage(BaseModel):
     content: str
 
 
+class LLMConfig(BaseModel):
+    provider: str = "ollama"
+    model: str = ""
+    api_key: str = ""
+    base_url: str = ""
+
+
+class ListModelsRequest(BaseModel):
+    provider: str
+    api_key: str = ""
+    base_url: str = ""
+
+
 class ChatRequest(BaseModel):
     question: str
     workspace_id: str
@@ -28,15 +41,13 @@ class ChatRequest(BaseModel):
 
     document_ids: list[str] | None = None
     collection_id: str | None = None
+    llm: LLMConfig | None = None
 
     top_k: int = Field(
         default=5,
         ge=1,
         le=20,
     )
-
-    provider: str | None = None
-    model: str | None = None
 
 
 @router.post("/internal/process-document")
@@ -63,26 +74,10 @@ async def process_document_route(
         ) from error
 
 
-@router.get("/internal/llm/providers")
-async def list_providers_route():
-    return {
-        "providers": list_providers(),
-    }
-
-
 @router.post("/internal/chat")
 async def chat_route(
     request: ChatRequest,
 ):
-    if (
-        request.provider
-        and request.provider not in PROVIDERS
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail=f"unknown provider: {request.provider}",
-        )
-
     try:
         history = [
             {
@@ -99,8 +94,7 @@ async def chat_route(
             document_ids=request.document_ids,
             collection_id=request.collection_id,
             top_k=request.top_k,
-            provider=request.provider,
-            model=request.model,
+            llm=request.llm.model_dump() if request.llm else None,
         )
 
         return result
@@ -115,4 +109,21 @@ async def chat_route(
         raise HTTPException(
             status_code=500,
             detail=f"chat failed: {error}",
+        ) from error
+
+
+@router.post("/internal/models")
+async def list_models_route(
+    request: ListModelsRequest,
+):
+    try:
+        return {"models": list_models(request.provider, request.api_key, request.base_url)}
+
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=502,
+            detail=f"could not list models: {error}",
         ) from error

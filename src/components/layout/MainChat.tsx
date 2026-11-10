@@ -8,7 +8,12 @@ import {
 import { useEffect, useState } from "react"
 
 import FileTypeIcon from "../common/FileTypeIcon"
-import type { LLMSelection } from "./ModelSelector"
+import ModelPicker from "../chat/ModelPicker"
+import {
+  toModelPayload,
+  type ModelSelection,
+  type ModelSettings,
+} from "../../lib/modelSettings"
 
 const API_BASE_URL = "http://localhost:8080"
 
@@ -79,12 +84,16 @@ type ApiResponse = {
 
 interface MainChatProps {
   conversationId: string
-  llmSelection: LLMSelection
+  modelSettings: ModelSettings
+  onSelectModel: (selection: ModelSelection) => void
+  onOpenSettings: () => void
 }
 
 export default function MainChat({
   conversationId,
-  llmSelection,
+  modelSettings,
+  onSelectModel,
+  onOpenSettings,
 }: MainChatProps) {
   const [question, setQuestion] = useState("")
   const [messages, setMessages] = useState<Message[]>([])
@@ -186,8 +195,7 @@ export default function MainChat({
           },
           body: JSON.stringify({
             content: trimmedQuestion,
-            provider: llmSelection.provider,
-            model: llmSelection.model ?? undefined,
+            model: toModelPayload(modelSettings),
           }),
         },
       )
@@ -263,6 +271,15 @@ export default function MainChat({
     )
   }
 
+  const picker = (
+    <ModelPicker
+      settings={modelSettings}
+      onSelect={onSelectModel}
+      onOpenSettings={onOpenSettings}
+      disabled={isLoading}
+    />
+  )
+
   return (
     <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#18181b]">
       {/* Ambient lighting */}
@@ -285,6 +302,7 @@ export default function MainChat({
           handleKeyDown={handleKeyDown}
           isLoading={isLoading}
           error={error}
+          picker={picker}
         />
       ) : (
         <WelcomeView
@@ -295,6 +313,7 @@ export default function MainChat({
           handlePromptClick={handlePromptClick}
           isLoading={isLoading}
           error={error}
+          picker={picker}
         />
       )}
     </main>
@@ -309,6 +328,7 @@ function WelcomeView({
   handlePromptClick,
   isLoading,
   error,
+  picker,
 }: {
   question: string
   setQuestion: (value: string) => void
@@ -321,6 +341,7 @@ function WelcomeView({
   ) => void
   isLoading: boolean
   error: string
+  picker: React.ReactNode
 }) {
   return (
     <div className="relative z-10 flex flex-1 overflow-y-auto px-8">
@@ -351,6 +372,7 @@ function WelcomeView({
           sendMessage={sendMessage}
           handleKeyDown={handleKeyDown}
           isLoading={isLoading}
+          picker={picker}
         />
 
         {error && (
@@ -447,6 +469,7 @@ function ConversationView({
   handleKeyDown,
   isLoading,
   error,
+  picker,
 }: {
   messages: Message[]
   question: string
@@ -457,6 +480,7 @@ function ConversationView({
   ) => void
   isLoading: boolean
   error: string
+  picker: React.ReactNode
 }) {
   return (
     <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
@@ -524,6 +548,7 @@ function ConversationView({
           handleKeyDown={handleKeyDown}
           compact
           isLoading={isLoading}
+          picker={picker}
         />
       </div>
     </div>
@@ -591,6 +616,7 @@ function Composer({
   handleKeyDown,
   compact = false,
   isLoading,
+  picker,
 }: {
   question: string
   setQuestion: (value: string) => void
@@ -600,6 +626,7 @@ function Composer({
   ) => void
   compact?: boolean
   isLoading: boolean
+  picker: React.ReactNode
 }) {
   return (
     <section
@@ -645,6 +672,8 @@ function Composer({
             />
             Web Search
           </button>
+
+          {picker}
         </div>
 
         <button

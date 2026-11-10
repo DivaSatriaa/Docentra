@@ -52,16 +52,11 @@ func (s *MessageService) CreateUserMessage(
 	)
 }
 
-type ChatOptions struct {
-	Provider string
-	Model    string
-}
-
 func (s *MessageService) Chat(
 	ctx context.Context,
 	conversationID string,
 	content string,
-	options ChatOptions,
+	llm *client.LLMConfig,
 ) (*client.ChatResponse, *model.Message, error) {
 	conversationID = strings.TrimSpace(conversationID)
 	content = strings.TrimSpace(content)
@@ -120,8 +115,7 @@ func (s *MessageService) Chat(
 		WorkspaceID: conversation.WorkspaceID,
 		History:     aiHistory,
 		TopK:        5,
-		Provider:    strings.TrimSpace(options.Provider),
-		Model:       strings.TrimSpace(options.Model),
+		LLM:         llm,
 	}
 
 	aiResponse, err := s.aiClient.Chat(

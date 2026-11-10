@@ -2,10 +2,11 @@ import { useState } from "react"
 
 import Sidebar from "./components/layout/Sidebar"
 import MainChat from "./components/layout/MainChat"
-import useLLMSelection from "./components/layout/useLLMSelection"
 import DocumentsPage from "./pages/DocumentsPage"
 import CollectionsPage from "./pages/CollectionsPage"
 import HistoryPage from "./pages/HistoryPage"
+import SettingsPage from "./pages/SettingsPage"
+import { useModelSettings } from "./lib/modelSettings"
 
 const API_BASE_URL = "http://localhost:8080"
 
@@ -20,6 +21,7 @@ type Page =
   | "documents"
   | "collections"
   | "history"
+  | "settings"
 
 type ConversationResponse = {
   id: string
@@ -31,15 +33,19 @@ type ConversationResponse = {
 
 function App() {
   const [page, setPage] = useState<Page>("chat")
+  const {
+    settings,
+    setKey,
+    setSelection,
+    saveCustomProvider,
+    removeCustomProvider,
+  } = useModelSettings()
 
   const [conversationId, setConversationId] =
     useState(INITIAL_CONVERSATION_ID)
 
   const [isCreatingConversation, setIsCreatingConversation] =
     useState(false)
-
-  const [llmSelection, setLLMSelection] =
-    useLLMSelection()
 
   async function handleNewChat() {
     if (isCreatingConversation) {
@@ -122,21 +128,29 @@ function App() {
         onDeleteConversation={
           handleDeleteConversation
         }
-        llmSelection={llmSelection}
-        onChangeLLM={setLLMSelection}
       />
 
       {page === "chat" ? (
         <MainChat
           conversationId={conversationId}
-          llmSelection={llmSelection}
+          modelSettings={settings}
+          onSelectModel={setSelection}
+          onOpenSettings={() => setPage("settings")}
         />
       ) : page === "documents" ? (
         <DocumentsPage />
       ) : page === "collections" ? (
         <CollectionsPage />
-      ) : (
+      ) : page === "history" ? (
         <HistoryPage />
+      ) : (
+        <SettingsPage
+          keys={settings.keys}
+          customProviders={settings.customProviders}
+          onSetKey={setKey}
+          onSaveCustom={saveCustomProvider}
+          onRemoveCustom={removeCustomProvider}
+        />
       )}
     </div>
   )

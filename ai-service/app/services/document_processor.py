@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from uuid import UUID
 
 from dotenv import load_dotenv
@@ -78,7 +79,8 @@ def process_document(document_id: str) -> dict:
     try:
         storage_root = os.getenv(
             "DOCUMENT_STORAGE_ROOT",
-            "/home/divas/Docentra/backend",
+            # <repo>/backend, so it works on any machine.
+            str(Path(__file__).resolve().parents[3] / "backend"),
         )
 
         file_path = os.path.join(

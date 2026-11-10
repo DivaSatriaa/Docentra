@@ -2,13 +2,14 @@ import { useState } from "react"
 
 import Sidebar from "./Sidebar"
 import MainChat from "./MainChat"
-import useLLMSelection from "./useLLMSelection"
+import { useModelSettings } from "../../lib/modelSettings"
 
 type Page =
   | "chat"
   | "documents"
   | "collections"
   | "history"
+  | "settings"
 
 const API_BASE_URL = "http://localhost:8080"
 
@@ -27,6 +28,8 @@ type ConversationResponse = {
 }
 
 export default function AppShell() {
+  const { settings, setSelection } = useModelSettings()
+
   const [activePage, setActivePage] =
     useState<Page>("chat")
 
@@ -35,9 +38,6 @@ export default function AppShell() {
 
   const [isCreatingConversation, setIsCreatingConversation] =
     useState(false)
-
-  const [llmSelection, setLLMSelection] =
-    useLLMSelection()
 
   async function handleNewChat() {
     if (isCreatingConversation) {
@@ -157,14 +157,14 @@ export default function AppShell() {
         onDeleteConversation={
           handleDeleteConversation
         }
-        llmSelection={llmSelection}
-        onChangeLLM={setLLMSelection}
       />
 
       {activePage === "chat" ? (
         <MainChat
           conversationId={conversationId}
-          llmSelection={llmSelection}
+          modelSettings={settings}
+          onSelectModel={setSelection}
+          onOpenSettings={() => setActivePage("settings")}
         />
       ) : (
         <main className="flex min-w-0 flex-1 items-center justify-center bg-[#18181b] text-white/40">
@@ -179,4 +179,4 @@ export default function AppShell() {
       )}
     </div>
   )
-}
+}

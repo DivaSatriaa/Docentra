@@ -1,3 +1,11 @@
+"""Provider-agnostic LLM calls.
+
+`llm` is an optional dict sent from the frontend:
+    {"provider": "ollama" | "openai" | "anthropic" | "gemini",
+     "model": "<model id>", "api_key": "<key, not needed for ollama>"}
+When omitted, the local Ollama model from the environment is used.
+"""
+
 import os
 
 import requests
@@ -7,211 +15,161 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-OLLAMA_URL = os.getenv(
-    "OLLAMA_URL",
-    "http://localhost:11434",
-)
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:4b-instruct")
 
-OLLAMA_MODEL = os.getenv(
-    "OLLAMA_MODEL",
-    "qwen3:4b-instruct",
-)
+OPENAI_BASE = "https://api.openai.com/v1"
+GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai"
+ANTHROPIC_BASE = "https://api.anthropic.com/v1"
+ANTHROPIC_VERSION = "2023-06-01"
 
-DEEPSEEK_URL = os.getenv(
-    "DEEPSEEK_URL",
-    "https://api.deepseek.com",
-)
+API_PROVIDERS = ("openai", "anthropic", "gemini")
 
-DEEPSEEK_API_KEY = os.getenv(
-    "DEEPSEEK_API_KEY",
-    "",
-)
-
-DEEPSEEK_MODEL = os.getenv(
-    "DEEPSEEK_MODEL",
-    "deepseek-chat",
-)
-
-DEEPSEEK_FALLBACK_MODELS = [
-    "deepseek-chat",
-    "deepseek-reasoner",
-]
-
-PROVIDER_OLLAMA = "ollama"
-PROVIDER_DEEPSEEK = "deepseek"
-
-PROVIDERS = (
-    PROVIDER_OLLAMA,
-    PROVIDER_DEEPSEEK,
-)
+# "custom" = any OpenAI-compatible endpoint (DeepSeek, Groq, OpenRouter,
+# LM Studio, ...), configured by the user with their own base URL.
+CUSTOM_PROVIDER = "custom"
 
 
-def complete(
-    prompt: str,
-    *,
-    provider: str | None = None,
-    model: str | None = None,
-) -> str:
-    provider = provider or PROVIDER_OLLAMA
+def _custom_base(llm: dict) -> str:
+    base = (llm.get("base_url") or "").strip().rstrip("/")
 
-    if provider == PROVIDER_OLLAMA:
-        return _complete_ollama(
-            prompt,
-            model or OLLAMA_MODEL,
-        )
+    if not base.startswith(("http://", "https://")):
+        raise ValueError("base URL must start with http:// or https://")
 
-    if provider == PROVIDER_DEEPSEEK:
-        return _complete_deepseek(
-            prompt,
-            model or DEEPSEEK_MODEL,
-        )
-
-    raise ValueError(f"unknown provider: {provider}")
+    return base
 
 
-def _complete_ollama(
-    prompt: str,
-    model: str,
-) -> str:
+def _raise_for_status(response: requests.Response) -> None:
+    if response.ok:
+        return
+
+    # Surface the provider's message, never the request (which holds the key).
+    try:
+        detail = response.json()
+        detail = detail.get("error", detail)
+        if isinstance(detail, dict):
+            detail = detail.get("message", detail)
+    except ValueError:
+        detail = response.text[:300]
+
+    raise RuntimeError(f"LLM provider error {response.status_code}: {detail}")
+
+
+def generate(prompt: str, llm: dict | None = None) -> str:
+    llm = llm or {}
+    provider = (llm.get("provider") or "ollama").lower()
+    model = (llm.get("model") or "").strip()
+    api_key = (llm.get("api_key") or "").strip()
+
+    if provider == "ollama":
+        return _ollama(prompt, model or OLLAMA_MODEL)
+
+    if provider == CUSTOM_PROVIDER:
+        if not model:
+            raise ValueError("model is required")
+        return _openai_compatible(prompt, model, api_key, _custom_base(llm))
+
+    if provider not in API_PROVIDERS:
+        raise ValueError(f"unknown provider: {provider}")
+
+    if not api_key:
+        raise ValueError(f"API key for {provider} is required")
+
+    if not model:
+        raise ValueError("model is required")
+
+    if provider == "anthropic":
+        return _anthropic(prompt, model, api_key)
+
+    base = OPENAI_BASE if provider == "openai" else GEMINI_BASE
+    return _openai_compatible(prompt, model, api_key, base)
+
+
+def _ollama(prompt: str, model: str) -> str:
     response = requests.post(
         f"{OLLAMA_URL}/api/generate",
-        json={
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-        },
+        json={"model": model, "prompt": prompt, "stream": False},
         timeout=300,
     )
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    return data["response"].strip()
+    _raise_for_status(response)
+    return response.json()["response"].strip()
 
 
-def _complete_deepseek(
-    prompt: str,
-    model: str,
-) -> str:
-    if not DEEPSEEK_API_KEY:
-        raise ValueError(
-            "DEEPSEEK_API_KEY is not configured"
-        )
-
+def _openai_compatible(prompt: str, model: str, api_key: str, base: str) -> str:
     response = requests.post(
-        f"{DEEPSEEK_URL}/chat/completions",
-        headers={
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        },
+        f"{base}/chat/completions",
+        headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+        timeout=120,
+    )
+    _raise_for_status(response)
+    return response.json()["choices"][0]["message"]["content"].strip()
+
+
+def _anthropic(prompt: str, model: str, api_key: str) -> str:
+    response = requests.post(
+        f"{ANTHROPIC_BASE}/messages",
+        headers={"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION},
         json={
             "model": model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt,
-                },
-            ],
-            "stream": False,
+            "max_tokens": 2048,
+            "messages": [{"role": "user", "content": prompt}],
         },
-        timeout=300,
+        timeout=120,
     )
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    content = data["choices"][0]["message"]["content"]
-
-    return (content or "").strip()
+    _raise_for_status(response)
+    blocks = response.json()["content"]
+    return "".join(b.get("text", "") for b in blocks if b.get("type") == "text").strip()
 
 
-def list_ollama_models() -> list[str]:
-    response = requests.get(
-        f"{OLLAMA_URL}/api/tags",
-        timeout=5,
-    )
+def list_models(provider: str, api_key: str = "", base_url: str = "") -> list[str]:
+    provider = (provider or "").lower()
+    api_key = (api_key or "").strip()
 
-    response.raise_for_status()
-
-    data = response.json()
-
-    return sorted(
-        model["name"]
-        for model in data.get("models", [])
-    )
-
-
-def list_deepseek_models() -> list[str]:
-    if not DEEPSEEK_API_KEY:
-        return []
-
-    try:
+    if provider == CUSTOM_PROVIDER:
         response = requests.get(
-            f"{DEEPSEEK_URL}/models",
-            headers={
-                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-            },
-            timeout=5,
+            f"{_custom_base({'base_url': base_url})}/models",
+            headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
+            timeout=15,
         )
+        _raise_for_status(response)
+        return sorted(m["id"] for m in response.json().get("data", []))
 
-        response.raise_for_status()
+    if provider == "ollama":
+        response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
+        _raise_for_status(response)
+        return sorted(m["name"] for m in response.json().get("models", []))
 
-        data = response.json()
+    if provider not in API_PROVIDERS:
+        raise ValueError(f"unknown provider: {provider}")
 
-        models = sorted(
-            model["id"]
-            for model in data.get("data", [])
+    if not api_key:
+        raise ValueError(f"API key for {provider} is required")
+
+    if provider == "anthropic":
+        response = requests.get(
+            f"{ANTHROPIC_BASE}/models",
+            headers={"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION},
+            params={"limit": 100},
+            timeout=15,
         )
+        _raise_for_status(response)
+        return [m["id"] for m in response.json().get("data", [])]
 
-        return models or DEEPSEEK_FALLBACK_MODELS
+    base = OPENAI_BASE if provider == "openai" else GEMINI_BASE
+    response = requests.get(
+        f"{base}/models",
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=15,
+    )
+    _raise_for_status(response)
+    ids = [m["id"].removeprefix("models/") for m in response.json().get("data", [])]
 
-    except requests.RequestException:
-        return DEEPSEEK_FALLBACK_MODELS
+    if provider == "openai":
+        # Hide embeddings/audio/image/etc; keep chat-capable families.
+        ids = [i for i in ids if i.startswith(("gpt-", "o1", "o3", "o4", "chatgpt-"))
+               and not any(x in i for x in ("audio", "realtime", "transcribe", "tts", "image", "search"))]
+    else:
+        ids = [i for i in ids if i.startswith("gemini")]
 
-
-def list_providers() -> list[dict]:
-    try:
-        ollama_models = list_ollama_models()
-        ollama_error = (
-            None
-            if ollama_models
-            else "No local models installed"
-        )
-
-    except requests.RequestException:
-        ollama_models = []
-        ollama_error = "Ollama is not reachable"
-
-    deepseek_models = list_deepseek_models()
-
-    return [
-        {
-            "id": PROVIDER_OLLAMA,
-            "label": "Local LLM",
-            "available": bool(ollama_models),
-            "error": ollama_error,
-            "default_model": (
-                OLLAMA_MODEL
-                if OLLAMA_MODEL in ollama_models
-                else next(iter(ollama_models), None)
-            ),
-            "models": ollama_models,
-        },
-        {
-            "id": PROVIDER_DEEPSEEK,
-            "label": "DeepSeek API",
-            "available": bool(DEEPSEEK_API_KEY),
-            "error": (
-                None
-                if DEEPSEEK_API_KEY
-                else "DEEPSEEK_API_KEY is not configured"
-            ),
-            "default_model": (
-                DEEPSEEK_MODEL
-                if DEEPSEEK_API_KEY
-                else None
-            ),
-            "models": deepseek_models,
-        },
-    ]
+    return sorted(ids)

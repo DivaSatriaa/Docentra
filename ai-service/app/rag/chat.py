@@ -13,8 +13,7 @@ def chat(
     document_ids: list[str] | None = None,
     collection_id: str | None = None,
     top_k: int = 5,
-    provider: str | None = None,
-    model: str | None = None,
+    llm: dict | None = None,
 ) -> dict:
     question = question.strip()
 
@@ -30,8 +29,7 @@ def chat(
     search_query = rewrite_query(
         question,
         history,
-        provider=provider,
-        model=model,
+        llm,
     )
 
     query_embedding = create_embeddings(
@@ -62,8 +60,7 @@ def chat(
     answer = generate_answer(
         question,
         context,
-        provider=provider,
-        model=model,
+        llm,
     )
 
     citations = [
@@ -81,4 +78,4 @@ def chat(
         "answer": answer,
         "citations": citations,
         "search_query": search_query,
-    }
+    }
