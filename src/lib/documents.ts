@@ -1,9 +1,5 @@
 import { useEffect, useState } from "react"
-
-const API_BASE_URL = "http://localhost:8080"
-
-const WORKSPACE_ID =
-  "5400fe40-1e5a-4d63-9ffe-06fb12621540"
+import { API_BASE_URL, WORKSPACE_ID } from "./api"
 
 const DOCUMENTS_URL = `${API_BASE_URL}/api/v1/workspaces/${WORKSPACE_ID}/documents`
 

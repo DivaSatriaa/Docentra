@@ -1,10 +1,6 @@
 import { Check, FileText, Loader2, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
-
-const API_BASE_URL = "http://localhost:8080"
-
-const WORKSPACE_ID =
-  "5400fe40-1e5a-4d63-9ffe-06fb12621540"
+import { API_BASE_URL, WORKSPACE_ID } from "../../lib/api"
 
 type DocumentItem = {
   id: string
@@ -98,10 +94,10 @@ export default function DocumentScopePicker({
         aria-haspopup="listbox"
         aria-expanded={open}
         className={[
-          "flex max-w-[200px] items-center gap-2 rounded-lg border px-3.5 py-2 text-[12px] transition hover:bg-white/[0.04] hover:text-white disabled:opacity-40",
+          "flex h-8 max-w-[200px] items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition hover:bg-white/[0.06] hover:text-white disabled:opacity-40",
           count > 0
-            ? "border-[#8E3A59]/50 text-[#C46A8A]"
-            : "border-white/[0.08] text-white/50",
+            ? "bg-brand-500/[0.12] text-brand-300"
+            : "text-white/55",
         ].join(" ")}
       >
         <FileText size={14} strokeWidth={1.8} className="shrink-0" />
@@ -109,7 +105,7 @@ export default function DocumentScopePicker({
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 z-30 mb-2 w-[320px] rounded-xl border border-white/[0.09] bg-[#1c1c20] p-2 shadow-2xl shadow-black/50">
+        <div className="absolute bottom-full left-0 z-30 mb-2 w-[320px] animate-pop-in rounded-xl border border-white/[0.09] bg-ink-850 p-2 shadow-2xl shadow-black/50">
           <div className="mb-1 flex items-center justify-between px-2.5 py-1.5">
             <span className="text-[11px] text-white/40">
               Search only in...
@@ -155,7 +151,7 @@ export default function DocumentScopePicker({
                   >
                     <span className="truncate">{item.original_name}</span>
                     {active && (
-                      <Check size={13} className="shrink-0 text-[#C46A8A]" />
+                      <Check size={13} className="shrink-0 text-brand-300" />
                     )}
                   </button>
                 )

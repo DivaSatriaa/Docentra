@@ -82,7 +82,7 @@ export default function UploadButton({
           setPhase({ name: "idle" })
           inputRef.current?.click()
         }}
-        className="flex items-center gap-2 rounded-lg border border-white/[0.08] px-3.5 py-2 text-[12px] text-white/50 transition hover:bg-white/[0.04] hover:text-white disabled:opacity-40"
+        className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] text-white/55 transition hover:bg-white/[0.06] hover:text-white disabled:opacity-40"
       >
         {busy ? (
           <Loader2 size={14} strokeWidth={1.8} className="animate-spin" />
@@ -99,7 +99,7 @@ export default function UploadButton({
       {phase.name === "error" && (
         <div
           role="alert"
-          className="absolute bottom-full left-0 z-30 mb-2 w-[280px] rounded-lg border border-red-400/15 bg-[#1c1c20] px-3 py-2 text-[11px] leading-4 text-red-200/80 shadow-xl shadow-black/40"
+          className="absolute bottom-full left-0 z-30 mb-2 w-[280px] rounded-lg border border-red-400/15 bg-ink-850 px-3 py-2 text-[11px] leading-4 text-red-200/80 shadow-xl shadow-black/40"
         >
           {phase.message}
         </div>

@@ -1,11 +1,8 @@
-import {
-  ArrowRight,
-  FileText,
-  FolderOpen,
-  MoreHorizontal,
-  Plus,
-  Search,
-} from "lucide-react"
+import { FileText, FolderOpen, Plus, Sparkles } from "lucide-react"
+import { useState } from "react"
+
+import Button from "../components/ui/Button"
+import { PageContainer, PageHeader, SearchField } from "../components/ui/Page"
 
 const collections = [
   {
@@ -35,102 +32,76 @@ const collections = [
 ]
 
 export default function CollectionsPage() {
+  const [query, setQuery] = useState("")
+  const visible = collections.filter((c) =>
+    `${c.name} ${c.description}`.toLowerCase().includes(query.trim().toLowerCase()),
+  )
+
   return (
-    <main className="relative min-w-0 flex-1 overflow-y-auto bg-[#18181b]">
-      {/* Ambient lighting */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute left-1/2 top-[-180px] h-[500px] w-[760px] -translate-x-1/2 rounded-full bg-[#8E3A59]/[0.08] blur-[150px]" />
-        <div className="absolute right-[-160px] top-[20%] h-[360px] w-[360px] rounded-full bg-[#5C1F45]/[0.05] blur-[140px]" />
-      </div>
-
-      <div className="relative z-10 mx-auto w-full max-w-[1120px] px-8 py-8">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-6">
-          <div>
-            <h1 className="text-[30px] font-medium tracking-[-0.02em] text-[#F2F2F2]">
-              Collections
-            </h1>
-
-            <p className="mt-2 text-sm text-white/40">
-              Organize documents into focused knowledge bases.
-            </p>
-          </div>
-
-          <button className="flex items-center gap-2 rounded-xl bg-[#8E3A59] px-4 py-2.5 text-sm font-medium text-white shadow-[0_8px_24px_rgba(142,58,89,0.18)] transition hover:bg-[#9d4564]">
-            <Plus size={17} />
+    <PageContainer>
+      <PageHeader
+        title="Collections"
+        description="Group documents into focused knowledge bases."
+        actions={
+          <Button variant="primary" disabled title="Coming soon">
+            <Plus size={16} strokeWidth={2.2} />
             New Collection
-          </button>
-        </div>
+          </Button>
+        }
+      />
 
-        {/* Search */}
-        <div className="mt-8 flex h-10 items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.025] px-3">
-          <Search
-            size={17}
-            strokeWidth={1.8}
-            className="shrink-0 text-white/30"
-          />
-
-          <input
-            type="text"
-            placeholder="Search collections..."
-            className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/25"
-          />
-        </div>
-
-        {/* Count */}
-        <div className="mt-7">
-          <span className="text-xs font-medium text-white/35">
-            {collections.length} collections
-          </span>
-        </div>
-
-        {/* Collection cards */}
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          {collections.map((collection) => (
-            <button
-              key={collection.name}
-              className="group rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[#8E3A59]/30 hover:bg-white/[0.035]"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#8E3A59]/10">
-                  <FolderOpen
-                    size={20}
-                    strokeWidth={1.7}
-                    className="text-[#D34778]"
-                  />
-                </div>
-
-                <MoreHorizontal
-                  size={18}
-                  className="text-white/25 transition group-hover:text-white/50"
-                />
-              </div>
-
-              <div className="mt-5">
-                <h2 className="text-[15px] font-medium text-white/90">
-                  {collection.name}
-                </h2>
-
-                <p className="mt-2 min-h-[40px] text-xs leading-5 text-white/40">
-                  {collection.description}
-                </p>
-              </div>
-
-              <div className="mt-5 flex items-center justify-between border-t border-white/[0.07] pt-4">
-                <div className="flex items-center gap-2 text-xs text-white/35">
-                  <FileText size={14} />
-                  {collection.documents} documents
-                </div>
-
-                <div className="flex items-center gap-1 text-xs text-white/30">
-                  Open
-                  <ArrowRight size={13} />
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
+      <div className="mt-6 flex items-start gap-3 rounded-xl border border-brand-500/25 bg-brand-500/[0.06] px-4 py-3 text-[13px] leading-6 text-white/65">
+        <Sparkles size={16} className="mt-1 shrink-0 text-brand-300" />
+        <p>
+          <span className="font-medium text-white/90">Collections are in preview.</span>{" "}
+          The cards below are examples of how they will look. Until then, pick documents
+          per question with the document picker in the chat box.
+        </p>
       </div>
-    </main>
+
+      <SearchField
+        value={query}
+        onChange={setQuery}
+        placeholder="Search collections..."
+        className="mt-6"
+      />
+
+      <p className="mt-6 text-[12px] text-white/35">
+        {visible.length} collection{visible.length === 1 ? "" : "s"}
+      </p>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {visible.map((collection) => (
+          <div
+            key={collection.name}
+            className="group rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5 transition duration-200 hover:border-brand-500/35 hover:bg-white/[0.035]"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/[0.12] text-brand-300">
+                <FolderOpen size={19} strokeWidth={1.7} />
+              </div>
+              <span className="rounded-md bg-white/[0.05] px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-wide text-white/35">
+                Example
+              </span>
+            </div>
+
+            <h2 className="mt-4 font-display text-[15px] font-medium text-white/90">
+              {collection.name}
+            </h2>
+            <p className="mt-1.5 text-[12.5px] leading-5 text-white/45">
+              {collection.description}
+            </p>
+
+            <div className="mt-5 flex items-center justify-between border-t border-white/[0.06] pt-3.5 text-[12px] text-white/35">
+              <span className="flex items-center gap-1.5">
+                <FileText size={13} />
+                {collection.documents} documents
+              </span>
+              <span>Updated {collection.updated.toLowerCase()}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </PageContainer>
   )
 }

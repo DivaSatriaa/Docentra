@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
+import { API_BASE_URL } from "./api"
 
-const API_BASE_URL = "http://localhost:8080"
 const STORAGE_KEY = "docentra.modelSettings.v1"
 
 export type ApiProvider = "openai" | "anthropic" | "gemini"
