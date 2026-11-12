@@ -1,184 +1,143 @@
+import { MessageSquare, Plus, SearchX, Trash2 } from "lucide-react"
+import { useMemo, useState } from "react"
+
+import Button from "../components/ui/Button"
 import {
-  Clock3,
-  FileText,
-  MessageSquare,
-  MoreHorizontal,
-  Search,
-} from "lucide-react"
+  EmptyState,
+  PageContainer,
+  PageHeader,
+  SearchField,
+} from "../components/ui/Page"
+import {
+  conversationTitle,
+  formatRelativeTime,
+  groupByDate,
+  type Conversation,
+} from "../lib/api"
 
-const history = [
-  {
-    date: "Today",
-    conversations: [
-      {
-        title: "Explain machine learning concepts",
-        preview:
-          "Can you explain the difference between supervised and unsupervised learning?",
-        documents: 2,
-        messages: 8,
-        time: "10:42 AM",
-      },
-      {
-        title: "Summarize research paper",
-        preview:
-          "What are the key findings and limitations discussed in this paper?",
-        documents: 1,
-        messages: 5,
-        time: "09:18 AM",
-      },
-    ],
-  },
-  {
-    date: "Yesterday",
-    conversations: [
-      {
-        title: "KKN guideline discussion",
-        preview:
-          "What documents are required before the KKN registration process?",
-        documents: 3,
-        messages: 11,
-        time: "4:36 PM",
-      },
-      {
-        title: "Compare two documents",
-        preview:
-          "Compare the methodology used in these two research documents.",
-        documents: 2,
-        messages: 7,
-        time: "2:12 PM",
-      },
-    ],
-  },
-  {
-    date: "Previous 7 days",
-    conversations: [
-      {
-        title: "Data mining notes",
-        preview:
-          "Give me a concise explanation of association rule mining.",
-        documents: 1,
-        messages: 6,
-        time: "Aug 20",
-      },
-      {
-        title: "Final project references",
-        preview:
-          "Find the most relevant sections for my final project topic.",
-        documents: 4,
-        messages: 14,
-        time: "Aug 19",
-      },
-    ],
-  },
-]
+export default function HistoryPage({
+  conversations,
+  isLoading,
+  error,
+  onOpen,
+  onDelete,
+  onNewChat,
+}: {
+  conversations: Conversation[]
+  isLoading: boolean
+  error: string
+  onOpen: (id: string) => void
+  onDelete: (conversation: Conversation) => void
+  onNewChat: () => void
+}) {
+  const [query, setQuery] = useState("")
 
-export default function HistoryPage() {
+  const groups = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return groupByDate(
+      q
+        ? conversations.filter((c) => conversationTitle(c).toLowerCase().includes(q))
+        : conversations,
+    )
+  }, [conversations, query])
+
   return (
-    <main className="relative min-w-0 flex-1 overflow-y-auto bg-[#18181b]">
-      {/* Ambient lighting */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute left-1/2 top-[-180px] h-[500px] w-[760px] -translate-x-1/2 rounded-full bg-[#8E3A59]/[0.08] blur-[150px]" />
-        <div className="absolute bottom-[-180px] right-[-120px] h-[380px] w-[380px] rounded-full bg-[#5C1F45]/[0.05] blur-[140px]" />
-      </div>
+    <PageContainer width="max-w-[880px]">
+      <PageHeader
+        title="History"
+        description="Pick up any previous conversation where you left off."
+        actions={
+          <Button variant="primary" onClick={onNewChat}>
+            <Plus size={16} strokeWidth={2.2} />
+            New Chat
+          </Button>
+        }
+      />
 
-      <div className="relative z-10 mx-auto w-full max-w-[1120px] px-8 py-8">
-        {/* Header */}
-        <div>
-          <h1 className="text-[30px] font-medium tracking-[-0.02em] text-[#F2F2F2]">
-            History
-          </h1>
+      <SearchField
+        value={query}
+        onChange={setQuery}
+        placeholder="Search conversations..."
+        className="mt-7"
+      />
 
-          <p className="mt-2 text-sm text-white/40">
-            Continue your previous conversations.
+      <div className="mt-7">
+        {isLoading ? (
+          <div className="space-y-2">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="h-[60px] animate-pulse rounded-xl bg-white/[0.03]" />
+            ))}
+          </div>
+        ) : error ? (
+          <p className="rounded-xl border border-red-400/15 bg-red-500/[0.05] px-4 py-3 text-[13px] text-red-200/80">
+            {error}
           </p>
-        </div>
-
-        {/* Search */}
-        <div className="mt-8 flex h-10 items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.025] px-3">
-          <Search
-            size={17}
-            strokeWidth={1.8}
-            className="shrink-0 text-white/30"
+        ) : conversations.length === 0 ? (
+          <EmptyState
+            icon={<MessageSquare size={20} />}
+            title="No conversations yet"
+            description="Your chats will appear here so you can come back to them any time."
+            action={
+              <Button variant="primary" onClick={onNewChat}>
+                <Plus size={16} />
+                Start a chat
+              </Button>
+            }
           />
-
-          <input
-            type="text"
-            placeholder="Search conversations..."
-            className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/25"
+        ) : groups.length === 0 ? (
+          <EmptyState
+            icon={<SearchX size={20} />}
+            title="No matching conversations"
+            description={`Nothing matches “${query}”. Try a different word.`}
           />
-        </div>
-
-        {/* History groups */}
-        <div className="mt-8 space-y-9">
-          {history.map((group) => (
-            <section key={group.date}>
-              <div className="mb-3 flex items-center gap-2">
-                <Clock3
-                  size={14}
-                  strokeWidth={1.8}
-                  className="text-white/25"
-                />
-
-                <h2 className="text-xs font-medium text-white/40">
-                  {group.date}
-                </h2>
-              </div>
-
-              <div className="space-y-3">
-                {group.conversations.map((conversation) => (
-                  <button
-                    key={conversation.title}
-                    className="group flex w-full items-center gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 text-left transition duration-200 hover:border-white/[0.14] hover:bg-white/[0.035]"
-                  >
-                    {/* Icon */}
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#8E3A59]/10">
-                      <MessageSquare
-                        size={20}
-                        strokeWidth={1.7}
-                        className="text-[#D34778]"
-                      />
-                    </div>
-
-                    {/* Main content */}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="truncate text-sm font-medium text-white/90">
-                          {conversation.title}
-                        </h3>
-                      </div>
-
-                      <p className="mt-1 truncate text-xs text-white/35">
-                        {conversation.preview}
-                      </p>
-
-                      <div className="mt-3 flex items-center gap-4 text-[11px] text-white/25">
-                        <span className="flex items-center gap-1.5">
-                          <FileText size={12} />
-                          {conversation.documents} documents
+        ) : (
+          <div className="space-y-7">
+            <p className="text-[12px] text-white/35">
+              {conversations.length} conversation{conversations.length === 1 ? "" : "s"}
+            </p>
+            {groups.map((group) => (
+              <section key={group.label}>
+                <h2 className="mb-2 text-[12px] font-medium text-white/40">{group.label}</h2>
+                <ul className="overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.015]">
+                  {group.items.map((conversation) => (
+                    <li
+                      key={conversation.id}
+                      className="group flex items-center border-b border-white/[0.05] transition last:border-0 hover:bg-white/[0.035]"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onOpen(conversation.id)}
+                        className="flex min-w-0 flex-1 items-center gap-3.5 px-4 py-3.5 text-left"
+                      >
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-500/[0.12] text-brand-300">
+                          <MessageSquare size={16} strokeWidth={1.8} />
                         </span>
-
-                        <span>
-                          {conversation.messages} messages
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13.5px] font-medium text-white/90">
+                            {conversationTitle(conversation)}
+                          </span>
+                          <span className="mt-0.5 block text-[11.5px] text-white/35">
+                            Updated {formatRelativeTime(conversation.updated_at)}
+                          </span>
                         </span>
-
-                        <span>{conversation.time}</span>
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="shrink-0">
-                      <MoreHorizontal
-                        size={18}
-                        className="text-white/20 transition group-hover:text-white/45"
-                      />
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDelete(conversation)}
+                        aria-label={`Delete ${conversationTitle(conversation)}`}
+                        title="Delete chat"
+                        className="mr-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/30 opacity-100 transition hover:bg-red-400/10 hover:text-red-300 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                      >
+                        <Trash2 size={15} strokeWidth={1.8} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        )}
       </div>
-    </main>
+    </PageContainer>
   )
 }

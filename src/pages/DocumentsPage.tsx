@@ -1,13 +1,13 @@
 import {
-  FileText,
   Grid2X2,
   List,
-  Loader2,
+  MessageSquarePlus,
   MoreHorizontal,
   Pencil,
-  Search,
+  SearchX,
   Trash2,
   Upload,
+  UploadCloud,
 } from "lucide-react"
 import {
   useEffect,
@@ -16,10 +16,18 @@ import {
   useState,
 } from "react"
 
-const API_BASE_URL = "http://localhost:8080"
-
-const WORKSPACE_ID =
-  "5400fe40-1e5a-4d63-9ffe-06fb12621540"
+import FileTypeIcon from "../components/common/FileTypeIcon"
+import Button, { IconButton } from "../components/ui/Button"
+import { ConfirmDialog, Dialog } from "../components/ui/Dialog"
+import {
+  EmptyState,
+  PageContainer,
+  PageHeader,
+  SearchField,
+} from "../components/ui/Page"
+import { useToast } from "../components/ui/Toast"
+import { API_BASE_URL, WORKSPACE_ID } from "../lib/api"
+import { ACCEPTED_FILE_TYPES } from "../lib/documents"
 
 type Document = {
   id: string
@@ -38,6 +46,15 @@ type Document = {
 }
 
 type ViewMode = "grid" | "list"
+type StatusFilter = "all" | "ready" | "processing" | "failed"
+
+function statusGroup(status: string): Exclude<StatusFilter, "all"> | "other" {
+  const s = status.toLowerCase()
+  if (s === "ready" || s === "completed" || s === "processed") return "ready"
+  if (s === "processing" || s === "pending") return "processing"
+  if (s === "failed" || s === "error") return "failed"
+  return "other"
+}
 
 function formatFileSize(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) {
@@ -106,25 +123,6 @@ function getFileType(document: Document) {
   return "FILE"
 }
 
-function getFileIconClass(
-  document: Document,
-) {
-  const type = getFileType(document)
-
-  if (type === "PDF") {
-    return "text-[#ff5964]"
-  }
-
-  if (
-    type === "DOCX" ||
-    type === "DOC"
-  ) {
-    return "text-[#5da7ff]"
-  }
-
-  return "text-[#C46A8A]"
-}
-
 function getStatusStyles(
   status: string,
 ) {
@@ -169,7 +167,15 @@ function getStatusStyles(
   }
 }
 
-export default function DocumentsPage() {
+export default function DocumentsPage({
+  onAskDocument,
+}: {
+  /** Open the chat scoped to this document. */
+  onAskDocument: (documentId: string) => void
+}) {
+  const toast = useToast()
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
+  const [isDragging, setIsDragging] = useState(false)
   const [documents, setDocuments] = useState<
     Document[]
   >([])
@@ -226,10 +232,12 @@ export default function DocumentsPage() {
     // Reset input supaya file yang sama bisa dipilih lagi
     event.target.value = ""
 
-    if (!file) {
-      return
+    if (file) {
+      await uploadFile(file)
     }
+  }
 
+  async function uploadFile(file: File) {
     try {
       setIsUploading(true)
       setUploadError("")
@@ -279,6 +287,7 @@ export default function DocumentsPage() {
 
       // Refresh daftar setelah upload berhasil
       await loadDocuments()
+      toast(`Uploaded “${file.name}”. Processing...`)
     } catch (requestError) {
       console.error(
         "Failed to upload document:",
@@ -506,15 +515,49 @@ export default function DocumentsPage() {
     }
   }, [documents])
 
+  // Close the card menu on any outside click or Escape.
+  useEffect(() => {
+    if (!menuDocumentId) return
+    function close() {
+      setMenuDocumentId(null)
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") close()
+    }
+    document.addEventListener("mousedown", close)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", close)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [menuDocumentId])
+
+  const statusCounts = useMemo(() => {
+    const counts = { all: documents.length, ready: 0, processing: 0, failed: 0 }
+    for (const document of documents) {
+      const group = statusGroup(document.processing_status)
+      if (group !== "other") counts[group] += 1
+    }
+    return counts
+  }, [documents])
+
   const filteredDocuments = useMemo(() => {
     const query =
       searchQuery.trim().toLowerCase()
 
+    const byStatus =
+      statusFilter === "all"
+        ? documents
+        : documents.filter(
+            (document) =>
+              statusGroup(document.processing_status) === statusFilter,
+          )
+
     if (!query) {
-      return documents
+      return byStatus
     }
 
-    return documents.filter(
+    return byStatus.filter(
       (document) =>
         document.name
           .toLowerCase()
@@ -526,67 +569,164 @@ export default function DocumentsPage() {
   }, [
     documents,
     searchQuery,
+    statusFilter,
   ])
 
-  return (
-    <main className="relative min-w-0 flex-1 overflow-y-auto bg-[#18181b]">
-      {/* Ambient lighting */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute left-1/2 top-[-180px] h-[500px] w-[760px] -translate-x-1/2 rounded-full bg-[#8E3A59]/[0.08] blur-[150px]" />
+  const isFiltering = searchQuery.trim() !== "" || statusFilter !== "all"
 
-        <div className="absolute left-[25%] top-[20%] h-[300px] w-[420px] rounded-full bg-[#5C1F45]/[0.04] blur-[140px]" />
+  function renderMenu(document: Document) {
+    return (
+      <div className="relative">
+        <IconButton
+          size="sm"
+          aria-label={`More actions for ${document.name || document.original_name}`}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={() =>
+            setMenuDocumentId((current) =>
+              current === document.id ? null : document.id,
+            )
+          }
+          className="text-white/35"
+        >
+          <MoreHorizontal size={17} />
+        </IconButton>
+
+        {menuDocumentId === document.id && (
+          <div
+            onMouseDown={(event) => event.stopPropagation()}
+            className="absolute right-0 top-9 z-30 w-40 animate-pop-in overflow-hidden rounded-xl border border-white/[0.09] bg-ink-850 p-1 shadow-2xl shadow-black/50"
+          >
+            <MenuItem
+              icon={<Pencil size={14} />}
+              label="Rename"
+              onClick={() => {
+                setMenuDocumentId(null)
+                setRenameTarget(document)
+                setRenameValue(document.name || document.original_name || "")
+              }}
+            />
+            <MenuItem
+              icon={<Trash2 size={14} />}
+              label="Delete"
+              danger
+              onClick={() => {
+                setMenuDocumentId(null)
+                setDeleteTarget(document)
+              }}
+            />
+          </div>
+        )}
       </div>
+    )
+  }
 
-      <div className="relative z-10 mx-auto w-full max-w-[1120px] px-8 py-8">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-6">
-          <div>
-            <h1 className="text-[30px] font-medium tracking-[-0.02em] text-[#F2F2F2]">
-              Documents
-            </h1>
+  function renderMeta(document: Document) {
+    return (
+      <>
+        <span>{getFileType(document)}</span>
+        <span className="text-white/15">·</span>
+        <span>{formatFileSize(document.file_size)}</span>
+        {document.page_count != null && (
+          <>
+            <span className="text-white/15">·</span>
+            <span>
+              {document.page_count} {document.page_count === 1 ? "page" : "pages"}
+            </span>
+          </>
+        )}
+      </>
+    )
+  }
 
-            <p className="mt-2 text-sm text-white/40">
-              Manage and explore your knowledge base.
-            </p>
-          </div>
+  function renderStatus(document: Document, className = "") {
+    const status = getStatusStyles(document.processing_status)
+    const group = statusGroup(document.processing_status)
+    return (
+      <span
+        className={[
+          "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium",
+          status.className,
+          className,
+        ].join(" ")}
+      >
+        <span
+          className={[
+            "h-1.5 w-1.5 rounded-full bg-current",
+            group === "processing" ? "animate-pulse" : "",
+          ].join(" ")}
+        />
+        {status.label}
+      </span>
+    )
+  }
 
-          <div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              accept=".pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.pptx"
-              onChange={handleUpload}
-            />
-
-            <button
-              type="button"
-              onClick={handleOpenUpload}
-              disabled={isUploading}
-              className="flex items-center gap-2 rounded-xl bg-[#8E3A59] px-4 py-2.5 text-sm font-medium text-white shadow-[0_8px_24px_rgba(142,58,89,0.18)] transition hover:bg-[#9d4564] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-            <Upload
-              size={17}
-              strokeWidth={1.9}
-            />
-
-              {isUploading
-                ? "Uploading..."
-                : "Upload Document"}
-            </button>
-          </div>
+  return (
+    <div
+      className="relative flex min-h-0 flex-1 flex-col"
+      onDragEnter={(event) => {
+        if (event.dataTransfer.types.includes("Files")) {
+          event.preventDefault()
+          setIsDragging(true)
+        }
+      }}
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes("Files")) event.preventDefault()
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget === event.target) setIsDragging(false)
+      }}
+      onDrop={(event) => {
+        event.preventDefault()
+        setIsDragging(false)
+        const file = event.dataTransfer.files?.[0]
+        if (file) void uploadFile(file)
+      }}
+    >
+      {isDragging && (
+        <div
+          className="absolute inset-3 z-40 flex animate-fade-in flex-col items-center justify-center rounded-3xl border-2 border-dashed border-brand-400/70 bg-ink-900/90 backdrop-blur-sm"
+          onDragLeave={() => setIsDragging(false)}
+        >
+          <UploadCloud size={36} className="text-brand-300" />
+          <p className="mt-3 font-display text-[17px] font-medium text-white">
+            Drop to upload
+          </p>
+          <p className="mt-1 text-[13px] text-white/45">
+            PDF, DOCX, TXT, MD, CSV, XLSX or PPTX
+          </p>
         </div>
+      )}
+
+      <PageContainer>
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          accept={ACCEPTED_FILE_TYPES}
+          onChange={handleUpload}
+        />
+
+        <PageHeader
+          title="Documents"
+          description="Upload files, then ask Docentra about them."
+          actions={
+            <Button variant="primary" onClick={handleOpenUpload} disabled={isUploading}>
+              <Upload size={16} strokeWidth={2} />
+              {isUploading ? "Uploading..." : "Upload"}
+            </Button>
+          }
+        />
 
         {uploadError && (
-          <div className="mt-5 flex items-center justify-between rounded-xl border border-red-400/10 bg-red-400/[0.035] px-4 py-3">
-            <p className="text-xs text-red-300/75">
-              {uploadError}
-            </p>
-
+          <div
+            role="alert"
+            className="mt-5 flex animate-rise-in items-center justify-between gap-4 rounded-xl border border-red-400/15 bg-red-500/[0.06] px-4 py-3"
+          >
+            <p className="text-[13px] text-red-200/85">{uploadError}</p>
             <button
               type="button"
               onClick={() => setUploadError("")}
-              className="text-xs text-white/30 transition hover:text-white/60"
+              className="text-[12px] text-white/40 transition hover:text-white/75"
             >
               Dismiss
             </button>
@@ -594,103 +734,91 @@ export default function DocumentsPage() {
         )}
 
         {/* Toolbar */}
-        <div className="mt-8 flex items-center gap-3">
-          <div className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.025] px-3">
-            <Search
-              size={17}
-              strokeWidth={1.8}
-              className="shrink-0 text-white/30"
-            />
+        <div className="mt-7 flex flex-wrap items-center gap-2.5">
+          <SearchField
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search documents..."
+            className="min-w-[200px] flex-1"
+          />
 
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(event) =>
-                setSearchQuery(
-                  event.target.value,
-                )
-              }
-              placeholder="Search documents..."
-              className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/25"
-            />
+          <div
+            role="tablist"
+            aria-label="Filter by status"
+            className="flex h-10 items-center gap-0.5 rounded-xl border border-white/[0.08] bg-white/[0.025] p-1"
+          >
+            {(["all", "ready", "processing", "failed"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={statusFilter === value}
+                onClick={() => setStatusFilter(value)}
+                className={[
+                  "flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] capitalize transition",
+                  statusFilter === value
+                    ? "bg-white/[0.08] text-white"
+                    : "text-white/45 hover:text-white/80",
+                ].join(" ")}
+              >
+                {value}
+                <span className="text-[11px] text-white/30">{statusCounts[value]}</span>
+              </button>
+            ))}
           </div>
 
-          <button className="flex h-10 items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.025] px-3 text-sm text-white/55 transition hover:bg-white/[0.04] hover:text-white">
-            All
-          </button>
-
-          <div className="flex items-center rounded-xl border border-white/[0.08] bg-white/[0.025] p-1">
-            <button
-              type="button"
-              onClick={() =>
-                setViewMode("grid")
-              }
-              aria-label="Grid view"
-              className={[
-                "flex h-8 w-8 items-center justify-center rounded-lg transition",
-                viewMode === "grid"
-                  ? "bg-white/[0.07] text-white"
-                  : "text-white/35 hover:text-white/70",
-              ].join(" ")}
-            >
-              <Grid2X2 size={15} />
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                setViewMode("list")
-              }
-              aria-label="List view"
-              className={[
-                "flex h-8 w-8 items-center justify-center rounded-lg transition",
-                viewMode === "list"
-                  ? "bg-white/[0.07] text-white"
-                  : "text-white/35 hover:text-white/70",
-              ].join(" ")}
-            >
-              <List size={15} />
-            </button>
+          <div className="flex h-10 items-center rounded-xl border border-white/[0.08] bg-white/[0.025] p-1">
+            {(
+              [
+                ["grid", Grid2X2, "Grid view"],
+                ["list", List, "List view"],
+              ] as const
+            ).map(([mode, Icon, label]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setViewMode(mode)}
+                aria-label={label}
+                aria-pressed={viewMode === mode}
+                title={label}
+                className={[
+                  "flex h-8 w-8 items-center justify-center rounded-lg transition",
+                  viewMode === mode
+                    ? "bg-white/[0.08] text-white"
+                    : "text-white/35 hover:text-white/70",
+                ].join(" ")}
+              >
+                <Icon size={15} />
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Count */}
-        <div className="mt-7">
-          <span className="text-xs font-medium text-white/35">
+        {!isLoading && !error && documents.length > 0 && (
+          <p className="mt-6 text-[12px] text-white/35">
             {filteredDocuments.length}{" "}
-            {filteredDocuments.length ===
-            1
-              ? "document"
-              : "documents"}
-          </span>
-        </div>
+            {filteredDocuments.length === 1 ? "document" : "documents"}
+            {isFiltering && ` of ${documents.length}`}
+          </p>
+        )}
 
         {/* Loading */}
         {isLoading && (
-          <div className="mt-10 flex items-center justify-center py-16 text-white/30">
-            <div className="flex items-center gap-2 text-sm">
-              <Loader2
-                size={16}
-                className="animate-spin"
-              />
-              Loading documents...
-            </div>
+          <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-[168px] animate-pulse rounded-2xl bg-white/[0.03]" />
+            ))}
           </div>
         )}
 
         {/* Error */}
         {!isLoading && error && (
-          <div className="mt-6 rounded-2xl border border-red-400/10 bg-red-400/[0.035] px-4 py-4">
-            <p className="text-sm text-red-300/75">
-              {error}
-            </p>
-
+          <div className="mt-6 rounded-2xl border border-red-400/15 bg-red-500/[0.05] px-4 py-4">
+            <p className="text-[13px] text-red-200/85">{error}</p>
             <button
               type="button"
-              onClick={() =>
-                void loadDocuments()
-              }
-              className="mt-3 text-xs font-medium text-red-200/70 transition hover:text-red-100"
+              onClick={() => void loadDocuments(true)}
+              className="mt-2 text-[12px] font-medium text-red-100/80 transition hover:text-white"
             >
               Try again
             </button>
@@ -698,451 +826,269 @@ export default function DocumentsPage() {
         )}
 
         {/* Empty */}
-        {!isLoading &&
-          !error &&
-          filteredDocuments.length ===
-            0 && (
-            <div className="mt-6 flex flex-col items-center justify-center rounded-2xl border border-white/[0.07] bg-white/[0.015] px-6 py-20 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/[0.04]">
-                <FileText
-                  size={22}
-                  strokeWidth={1.7}
-                  className="text-white/25"
-                />
-              </div>
-
-              <h2 className="mt-4 text-sm font-medium text-white/65">
-                {searchQuery.trim()
-                  ? "No matching documents"
-                  : "No documents yet"}
-              </h2>
-
-              <p className="mt-1.5 max-w-sm text-xs leading-5 text-white/30">
-                {searchQuery.trim()
-                  ? "Try a different search term."
-                  : "Upload a document to start building your knowledge base."}
-              </p>
-            </div>
-          )}
+        {!isLoading && !error && filteredDocuments.length === 0 && (
+          <div className="mt-6">
+            {documents.length === 0 ? (
+              <button
+                type="button"
+                onClick={handleOpenUpload}
+                className="flex w-full flex-col items-center rounded-2xl border border-dashed border-white/[0.12] px-6 py-16 text-center transition hover:border-brand-500/50 hover:bg-brand-500/[0.04]"
+              >
+                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-500/[0.12] text-brand-300">
+                  <UploadCloud size={22} />
+                </span>
+                <span className="mt-4 font-display text-[15px] font-medium text-white/90">
+                  Upload your first document
+                </span>
+                <span className="mt-1.5 max-w-sm text-[13px] leading-6 text-white/45">
+                  Click to browse, or drag a file anywhere on this page. PDF, DOCX, TXT,
+                  MD, CSV, XLSX and PPTX are supported.
+                </span>
+              </button>
+            ) : (
+              <EmptyState
+                icon={<SearchX size={20} />}
+                title="No matching documents"
+                description="Try a different search term or status filter."
+                action={
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setSearchQuery("")
+                      setStatusFilter("all")
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                }
+              />
+            )}
+          </div>
+        )}
 
         {/* Grid */}
-        {!isLoading &&
-          !error &&
-          filteredDocuments.length > 0 &&
-          viewMode === "grid" && (
-            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {filteredDocuments.map(
-                (document) => {
-                  const status =
-                    getStatusStyles(
-                      document.processing_status,
-                    )
-                  const isProcessing =
-                    document.processing_status.toLowerCase() ===
-                      "processing" ||
-                    document.processing_status.toLowerCase() ===
-                      "pending"
+        {!isLoading && !error && filteredDocuments.length > 0 && viewMode === "grid" && (
+          <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {filteredDocuments.map((document) => {
+              const group = statusGroup(document.processing_status)
 
-                  return (
-                    <div
-                      key={document.id}
-                      className={[
-                        "group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 text-left transition duration-200",
-                        "hover:-translate-y-0.5 hover:border-white/[0.14] hover:bg-white/[0.035]",
-                        isProcessing
-                          ? "document-processing-shimmer"
-                          : "",
-                      ].join(" ")}
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/[0.05]">
-                          <FileText
-                            size={20}
-                            strokeWidth={1.7}
-                            className={getFileIconClass(
-                              document,
-                            )}
-                          />
-                        </div>
-
-                        <div className="relative">
-                          <button
-                            type="button"
-                            aria-label={`More actions for ${
-                              document.original_name ||
-                              document.name
-                            }`}
-                            onClick={(event) => {
-                              event.stopPropagation()
-
-                              setMenuDocumentId((current) =>
-                                current === document.id
-                                  ? null
-                                  : document.id,
-                              )
-                            }}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-white/25 transition hover:bg-white/[0.06] hover:text-white/70"
-                          >
-                            <MoreHorizontal size={18} />
-                          </button>
-
-                          {menuDocumentId === document.id && (
-                            <div className="absolute right-0 top-10 z-30 w-36 overflow-hidden rounded-xl border border-white/[0.08] bg-[#1d1d21] p-1 shadow-2xl shadow-black/40">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setMenuDocumentId(null)
-                                  setRenameTarget(document)
-                                  setRenameValue(
-                                    document.name ||
-                                      document.original_name ||
-                                      "",
-                                  )
-                                }}
-                                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-white transition hover:bg-white/[0.05]"
-                              >
-                                <Pencil className="h-4 w-4" />
-                                Rename
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setMenuDocumentId(null)
-                                  setDeleteTarget(document)
-                                }}
-                                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-red-400 transition hover:bg-white/[0.05]"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                Delete
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="mt-5">
-                        <div className="truncate text-sm font-medium text-white/85">
-                          {document.name ||
-                            document.original_name}
-                        </div>
-
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-white/35">
-                          <span>
-                            {getFileType(
-                              document,
-                            )}
-                          </span>
-
-                          <span className="text-white/15">
-                            ·
-                          </span>
-
-                          <span>
-                            {formatFileSize(
-                              document.file_size,
-                            )}
-                          </span>
-
-                          {document.page_count != null && (
-                            <>
-                              <span className="text-white/15">
-                                ·
-                              </span>
-
-                              <span>
-                                {document.page_count}{" "}
-                                {document.page_count ===
-                                1
-                                  ? "page"
-                                  : "pages"}
-                              </span>
-                            </>
-                          )}
-                        </div>
-
-                        <div className="mt-4 flex items-center justify-between gap-3">
-                          <div className="text-[11px] text-white/25">
-                            Updated{" "}
-                            {formatDate(
-                              document.updated_at,
-                            )}
-                          </div>
-
-                          <span
-                            className={[
-                              "rounded-md border px-1.5 py-0.5 text-[9px] font-medium",
-                              status.className,
-                            ].join(" ")}
-                          >
-                            {status.label}
-                          </span>
-                        </div>
-
-                        {document.processing_status.toLowerCase() ===
-                          "failed" && (
-                          <FailureNote
-                            reason={document.processing_error}
-                            onRetry={() =>
-                              void handleRetry(document.id)
-                            }
-                          />
-                        )}
-                      </div>
+              return (
+                <div
+                  key={document.id}
+                  className={[
+                    "group relative flex flex-col rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 transition duration-200",
+                    "hover:border-white/[0.13] hover:bg-white/[0.035]",
+                    group === "processing" ? "document-processing-shimmer" : "",
+                    menuDocumentId === document.id ? "z-20" : "",
+                  ].join(" ")}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/[0.04]">
+                      <FileTypeIcon type={document.extension ?? ""} size={28} />
                     </div>
-                  )
-                },
-              )}
-            </div>
-          )}
+                    {renderMenu(document)}
+                  </div>
+
+                  <div
+                    className="mt-4 truncate text-[14px] font-medium text-white/90"
+                    title={document.name || document.original_name}
+                  >
+                    {document.name || document.original_name}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[12px] text-white/40">
+                    {renderMeta(document)}
+                  </div>
+
+                  {group === "failed" && (
+                    <FailureNote
+                      reason={document.processing_error}
+                      onRetry={() => void handleRetry(document.id)}
+                    />
+                  )}
+
+                  <div className="mt-auto flex items-center justify-between gap-3 pt-4">
+                    <div className="flex items-center gap-2">
+                      {renderStatus(document)}
+                      <span className="text-[11px] text-white/30">
+                        {formatDate(document.updated_at)}
+                      </span>
+                    </div>
+
+                    {group === "ready" && (
+                      <button
+                        type="button"
+                        onClick={() => onAskDocument(document.id)}
+                        className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium text-brand-300 transition hover:bg-brand-500/15 hover:text-white"
+                      >
+                        <MessageSquarePlus size={14} />
+                        Ask
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* List */}
-        {!isLoading &&
-          !error &&
-          filteredDocuments.length > 0 &&
-          viewMode === "list" && (
-            <div className="mt-4 overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.015]">
-              {filteredDocuments.map(
-                (document, index) => {
-                  const status =
-                    getStatusStyles(
-                      document.processing_status,
-                    )
+        {!isLoading && !error && filteredDocuments.length > 0 && viewMode === "list" && (
+          <div className="mt-3 rounded-2xl border border-white/[0.07] bg-white/[0.015]">
+            {filteredDocuments.map((document, index) => {
+              const group = statusGroup(document.processing_status)
 
-                  return (
-                    <button
-                      key={document.id}
-                      type="button"
-                      className={[
-                        "group flex w-full items-center gap-4 px-4 py-4 text-left transition hover:bg-white/[0.025]",
-                        index > 0
-                          ? "border-t border-white/[0.06]"
-                          : "",
-                      ].join(" ")}
-                    >
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/[0.05]">
-                        <FileText
-                          size={18}
-                          strokeWidth={1.7}
-                          className={getFileIconClass(
-                            document,
-                          )}
-                        />
-                      </div>
+              return (
+                <div
+                  key={document.id}
+                  className={[
+                    "group relative flex items-center gap-3.5 px-4 py-3 transition hover:bg-white/[0.025]",
+                    index > 0 ? "border-t border-white/[0.05]" : "",
+                    menuDocumentId === document.id ? "z-20" : "",
+                  ].join(" ")}
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/[0.04]">
+                    <FileTypeIcon type={document.extension ?? ""} size={24} />
+                  </div>
 
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium text-white/80">
-                          {document.name ||
-                            document.original_name}
-                        </div>
-
-                        <div className="mt-1 flex items-center gap-1.5 text-[11px] text-white/30">
-                          <span>
-                            {getFileType(
-                              document,
-                            )}
-                          </span>
-
-                          <span className="text-white/15">
-                            ·
-                          </span>
-
-                          <span>
-                            {formatFileSize(
-                              document.file_size,
-                            )}
-                          </span>
-
-                          {document.page_count != null && (
-                            <>
-                              <span className="text-white/15">
-                                ·
-                              </span>
-
-                              <span>
-                                {document.page_count}{" "}
-                                {document.page_count ===
-                                1
-                                  ? "page"
-                                  : "pages"}
-                              </span>
-                            </>
-                          )}
-                        </div>
-
-                        {document.processing_status.toLowerCase() ===
-                          "failed" && (
-                          <FailureNote
-                            reason={document.processing_error}
-                            onRetry={() =>
-                              void handleRetry(document.id)
-                            }
-                          />
-                        )}
-                      </div>
-
-                      <span
-                        className={[
-                          "hidden shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-medium sm:block",
-                          status.className,
-                        ].join(" ")}
-                      >
-                        {status.label}
-                      </span>
-
-                      <div className="hidden shrink-0 text-[11px] text-white/25 md:block">
-                        {formatDate(
-                          document.updated_at,
-                        )}
-                      </div>
-
-                      <MoreHorizontal
-                        size={18}
-                        className="shrink-0 text-white/20 transition group-hover:text-white/45"
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13.5px] font-medium text-white/85">
+                      {document.name || document.original_name}
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-white/35">
+                      {renderMeta(document)}
+                    </div>
+                    {group === "failed" && (
+                      <FailureNote
+                        reason={document.processing_error}
+                        onRetry={() => void handleRetry(document.id)}
                       />
-                    </button>
-                  )
-                },
-              )}
-            </div>
-          )}
-      </div>
+                    )}
+                  </div>
 
-      {renameTarget && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
-          onMouseDown={() => {
-            if (!isRenaming) {
-              setRenameTarget(null)
-            }
+                  {renderStatus(document, "hidden sm:inline-flex")}
+
+                  <div className="hidden w-[96px] shrink-0 text-right text-[11.5px] text-white/30 md:block">
+                    {formatDate(document.updated_at)}
+                  </div>
+
+                  <div className="flex w-[64px] shrink-0 justify-end">
+                    {group === "ready" && (
+                      <button
+                        type="button"
+                        onClick={() => onAskDocument(document.id)}
+                        className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium text-brand-300 transition hover:bg-brand-500/15 hover:text-white"
+                      >
+                        <MessageSquarePlus size={14} />
+                        Ask
+                      </button>
+                    )}
+                  </div>
+
+                  {renderMenu(document)}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </PageContainer>
+
+      <Dialog
+        open={renameTarget !== null}
+        onClose={() => {
+          if (!isRenaming) setRenameTarget(null)
+        }}
+        labelledBy="rename-document-title"
+      >
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            void handleRename()
           }}
         >
-          <div
-            className="w-full max-w-md rounded-2xl border border-white/[0.08] bg-[#1c1c20] p-6 shadow-2xl shadow-black/50"
-            onMouseDown={(event) => event.stopPropagation()}
+          <h2
+            id="rename-document-title"
+            className="font-display text-[16px] font-medium text-white"
           >
-            <h2 className="text-[15px] font-medium text-white">
-              Rename document
-            </h2>
-
-            <p className="mt-2 text-[13px] leading-6 text-white/40">
-              Choose a new name for this document.
-            </p>
-
-            <input
-              autoFocus
-              value={renameValue}
-              onChange={(event) =>
-                setRenameValue(event.target.value)
-              }
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  void handleRename()
-                }
-
-                if (event.key === "Escape") {
-                  setRenameTarget(null)
-                }
-              }}
-              className="mt-5 w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/20 focus:border-[#8E3A59]/50"
-            />
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                disabled={isRenaming}
-                onClick={() => setRenameTarget(null)}
-                className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-4 py-2 text-xs font-medium text-white/60 transition hover:bg-white/[0.06] hover:text-white"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                disabled={
-                  isRenaming ||
-                  !renameValue.trim()
-                }
-                onClick={() => {
-                  void handleRename()
-                }}
-                className="rounded-lg bg-[#8E3A59] px-4 py-2 text-xs font-medium text-white transition hover:bg-[#9d4564] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {isRenaming
-                  ? "Renaming..."
-                  : "Rename"}
-              </button>
-            </div>
+            Rename document
+          </h2>
+          <p className="mt-1.5 text-[13px] text-white/45">
+            Choose a new name for this document.
+          </p>
+          <input
+            value={renameValue}
+            onChange={(event) => setRenameValue(event.target.value)}
+            onFocus={(event) => {
+              // Select the name without the extension.
+              const dot = event.target.value.lastIndexOf(".")
+              event.target.setSelectionRange(0, dot > 0 ? dot : event.target.value.length)
+            }}
+            className="mt-5 w-full rounded-xl border border-white/[0.09] bg-ink-900 px-3 py-2.5 text-[13.5px] text-white outline-none transition focus:border-brand-500/60"
+          />
+          <div className="mt-6 flex justify-end gap-2">
+            <Button size="sm" disabled={isRenaming} onClick={() => setRenameTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              type="submit"
+              variant="primary"
+              disabled={isRenaming || !renameValue.trim()}
+            >
+              {isRenaming ? "Renaming..." : "Rename"}
+            </Button>
           </div>
-        </div>
-      )}
+        </form>
+      </Dialog>
 
-      {deleteTarget && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
-          onMouseDown={() => {
-            if (!isDeleting) {
-              setDeleteTarget(null)
-            }
-          }}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl border border-white/[0.08] bg-[#1c1c20] p-6 shadow-2xl shadow-black/50"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-red-400/10 bg-red-400/[0.07]">
-              <Trash2
-                size={18}
-                className="text-red-300"
-              />
-            </div>
-
-            <h2 className="text-[15px] font-medium text-white">
-              Delete document?
-            </h2>
-
-            <p className="mt-2 text-[13px] leading-6 text-white/50">
-              Are you sure you want to delete{" "}
-              <span className="font-medium text-white/80">
-                "{deleteTarget.name ||
-                  deleteTarget.original_name}"
-              </span>
-              ?
-              <br />
-              This action cannot be undone.
-            </p>
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                disabled={isDeleting}
-                onClick={() =>
-                  setDeleteTarget(null)
-                }
-                className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-4 py-2 text-xs font-medium text-white/60 transition hover:bg-white/[0.06] hover:text-white"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                disabled={isDeleting}
-                onClick={() => {
-                  void handleDelete()
-                }}
-                className="rounded-lg bg-red-400/[0.12] px-4 py-2 text-xs font-medium text-red-300 transition hover:bg-red-400/[0.18] hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {isDeleting
-                  ? "Deleting..."
-                  : "Delete"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </main>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete document?"
+        icon={<Trash2 size={18} strokeWidth={1.8} />}
+        description={
+          <>
+            <span className="font-medium text-white/85">
+              “{deleteTarget?.name || deleteTarget?.original_name}”
+            </span>{" "}
+            and its search index will be removed from your workspace.
+            This can't be undone.
+          </>
+        }
+        busy={isDeleting}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    </div>
   )
-} 
+}
+
+function MenuItem({
+  icon,
+  label,
+  danger = false,
+  onClick,
+}: {
+  icon: React.ReactNode
+  label: string
+  danger?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition",
+        danger
+          ? "text-red-300 hover:bg-red-400/10"
+          : "text-white/80 hover:bg-white/[0.06] hover:text-white",
+      ].join(" ")}
+    >
+      {icon}
+      {label}
+    </button>
+  )
+}
+
 /** Why processing failed, with a retry action. */
 function FailureNote({
   reason,

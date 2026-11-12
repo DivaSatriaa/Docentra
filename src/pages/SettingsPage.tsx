@@ -1,5 +1,7 @@
-import { Eye, EyeOff, KeyRound, Plus, Server, Trash2 } from "lucide-react"
+import { Eye, EyeOff, KeyRound, Plus, Server, ShieldCheck, Trash2 } from "lucide-react"
 import { useState } from "react"
+
+import { PageContainer, PageHeader } from "../components/ui/Page"
 
 import {
   API_PROVIDERS,
@@ -25,18 +27,27 @@ export default function SettingsPage({
   onRemoveCustom,
 }: SettingsPageProps) {
   return (
-    <main className="min-w-0 flex-1 overflow-y-auto bg-[#18181b] px-8 py-10">
-      <div className="mx-auto w-full max-w-[720px]">
-        <h1 className="text-xl font-medium text-white">Settings</h1>
-        <p className="mt-1 text-[13px] text-white/40">
-          Connect an AI provider to use API models. Local models need no key.
+    <PageContainer width="max-w-[760px]">
+      <PageHeader
+        title="Settings"
+        description="Connect AI providers. Local models (Ollama) work without a key."
+      />
+
+      <div className="mt-8 flex items-start gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 text-[12.5px] leading-6 text-white/50">
+        <ShieldCheck size={16} className="mt-1 shrink-0 text-emerald-300/80" />
+        <p>
+          Keys are stored only in this browser and sent with your requests through the
+          local Docentra backend to the provider you choose. They are never saved to the
+          database.
         </p>
+      </div>
 
         <section className="mt-8">
-          <h2 className="mb-3 flex items-center gap-2 text-[13px] font-medium text-white/80">
-            <KeyRound size={15} strokeWidth={1.8} />
-            API keys
-          </h2>
+          <SectionTitle
+            icon={<KeyRound size={15} strokeWidth={1.8} />}
+            title="API keys"
+            description="Built-in providers for the model picker."
+          />
 
           <div className="space-y-3">
             {API_PROVIDERS.map((provider) => (
@@ -50,21 +61,20 @@ export default function SettingsPage({
             ))}
           </div>
 
-          <h2 className="mb-1 mt-9 flex items-center gap-2 text-[13px] font-medium text-white/80">
-            <Server size={15} strokeWidth={1.8} />
-            Custom providers
-          </h2>
-          <p className="mb-3 text-[12px] leading-5 text-white/35">
-            Type a provider name and paste your key. Known providers
-            (DeepSeek, Groq, OpenRouter, Mistral, Together, xAI) are set up
-            automatically; for anything else, add its OpenAI-compatible URL.
-          </p>
+        </section>
+
+        <section className="mt-10">
+          <SectionTitle
+            icon={<Server size={15} strokeWidth={1.8} />}
+            title="Custom providers"
+            description="Type a provider name and paste your key. DeepSeek, Groq, OpenRouter, Mistral, Together and xAI are set up automatically; for anything else, add its OpenAI-compatible URL."
+          />
 
           <div className="space-y-3">
             {customProviders.map((provider) => (
               <div
                 key={provider.id}
-                className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.02] p-4"
+                className="flex items-center justify-between rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4"
               >
                 <div className="min-w-0">
                   <div className="text-[13px] text-white">{provider.name}</div>
@@ -88,15 +98,28 @@ export default function SettingsPage({
 
             <CustomProviderForm onSave={onSaveCustom} />
           </div>
-
-          <p className="mt-4 text-[12px] leading-5 text-white/35">
-            Keys are stored only in this browser and are sent with your
-            requests through the local Docentra backend to the provider you
-            choose. They are never saved to the database.
-          </p>
         </section>
-      </div>
-    </main>
+    </PageContainer>
+  )
+}
+
+function SectionTitle({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode
+  title: string
+  description: string
+}) {
+  return (
+    <div className="mb-4">
+      <h2 className="flex items-center gap-2 font-display text-[15px] font-medium text-white/90">
+        <span className="text-brand-300">{icon}</span>
+        {title}
+      </h2>
+      <p className="mt-1 text-[12.5px] leading-5 text-white/40">{description}</p>
+    </div>
   )
 }
 
@@ -117,7 +140,7 @@ function KeyRow({
   const masked = savedKey ? `${savedKey.slice(0, 4)}…${savedKey.slice(-4)}` : ""
 
   return (
-    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
+    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
       <div className="mb-2.5 flex items-center justify-between">
         <span className="text-[13px] text-white">{label}</span>
         {savedKey ? (
@@ -154,7 +177,7 @@ function KeyRow({
             placeholder={savedKey ? "Replace key" : hint}
             autoComplete="off"
             spellCheck={false}
-            className="w-full rounded-lg border border-white/[0.08] bg-[#222226] py-2 pl-3 pr-9 text-[13px] text-white outline-none placeholder:text-white/25 focus:border-[#8E3A59]/60"
+            className="w-full rounded-lg border border-white/[0.08] bg-ink-900 py-2 pl-3 pr-9 text-[13px] text-white outline-none placeholder:text-white/25 focus:border-brand-500/60"
           />
           <button
             type="button"
@@ -169,7 +192,7 @@ function KeyRow({
         <button
           type="submit"
           disabled={!draft.trim()}
-          className="rounded-lg bg-[#8E3A59] px-4 py-2 text-[12px] font-medium text-white transition hover:bg-[#9f4668] disabled:cursor-not-allowed disabled:opacity-35"
+          className="rounded-lg bg-brand-500 px-4 py-2 text-[12px] font-medium text-white transition hover:bg-brand-400 disabled:cursor-not-allowed disabled:opacity-35"
         >
           Save
         </button>
@@ -197,7 +220,7 @@ function CustomProviderForm({
   const canSave = name.trim() !== "" && urlValid
 
   const inputClass =
-    "w-full rounded-lg border border-white/[0.08] bg-[#222226] px-3 py-2 text-[13px] text-white outline-none placeholder:text-white/25 focus:border-[#8E3A59]/60"
+    "w-full rounded-lg border border-white/[0.08] bg-ink-900 px-3 py-2 text-[13px] text-white outline-none placeholder:text-white/25 focus:border-brand-500/60"
 
   return (
     <form
@@ -299,7 +322,7 @@ function CustomProviderForm({
       <button
         type="submit"
         disabled={!canSave}
-        className="mt-3 flex items-center gap-1.5 rounded-lg bg-[#8E3A59] px-4 py-2 text-[12px] font-medium text-white transition hover:bg-[#9f4668] disabled:cursor-not-allowed disabled:opacity-35"
+        className="mt-3 flex items-center gap-1.5 rounded-lg bg-brand-500 px-4 py-2 text-[12px] font-medium text-white transition hover:bg-brand-400 disabled:cursor-not-allowed disabled:opacity-35"
       >
         <Plus size={14} strokeWidth={2} />
         Add provider
