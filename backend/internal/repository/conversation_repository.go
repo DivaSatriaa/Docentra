@@ -176,3 +176,36 @@ func (r *ConversationRepository) Delete(
 
 	return nil
 }
+
+func (r *ConversationRepository) UpdateTitle(
+	ctx context.Context,
+	id string,
+	title string,
+) (*model.Conversation, error) {
+	query := `
+		UPDATE conversations
+		SET title = $2
+		WHERE id = $1
+		RETURNING
+			id,
+			workspace_id,
+			title,
+			created_at,
+			updated_at
+	`
+
+	var conversation model.Conversation
+
+	err := r.db.QueryRow(ctx, query, id, title).Scan(
+		&conversation.ID,
+		&conversation.WorkspaceID,
+		&conversation.Title,
+		&conversation.CreatedAt,
+		&conversation.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("update conversation title: %w", err)
+	}
+
+	return &conversation, nil
+}

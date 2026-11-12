@@ -231,3 +231,21 @@ func (h *DocumentHandler) Rename(c *gin.Context) {
 
 	c.JSON(http.StatusOK, document)
 }
+// Reprocess retries processing for a document.
+func (h *DocumentHandler) Reprocess(c *gin.Context) {
+	document, err := h.service.Reprocess(
+		c.Request.Context(),
+		c.Param("documentId"),
+	)
+	if err != nil {
+		status := http.StatusBadRequest
+		if err.Error() == "document not found" {
+			status = http.StatusNotFound
+		}
+
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusAccepted, document)
+}

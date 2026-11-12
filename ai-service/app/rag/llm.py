@@ -173,3 +173,38 @@ def list_models(provider: str, api_key: str = "", base_url: str = "") -> list[st
         ids = [i for i in ids if i.startswith("gemini")]
 
     return sorted(ids)
+
+
+def generate_title(question: str, answer: str, llm: dict | None = None) -> str:
+    """A short chat title (max ~6 words) in the language of the question."""
+    from app.rag.lang import detect_language
+
+    language = detect_language(question)
+    language_rule = (
+        f"Write the title in {language}."
+        if language
+        else "Use the same language as the user's question."
+    )
+
+    prompt = f"""
+Write a short title (3 to 6 words) for a chat that starts like this.
+{language_rule} No quotes, no trailing punctuation, no explanation.
+Reply with the title only.
+
+User question:
+{question[:500]}
+
+Assistant answer:
+{answer[:500]}
+
+Title:
+""".strip()
+
+    lines = generate(prompt, llm).strip().splitlines()
+    title = lines[0] if lines else ""
+    title = title.strip().strip("\"'`*#").strip().rstrip(".!?:;,")
+
+    if len(title) > 60:
+        title = title[:60].rsplit(" ", 1)[0]
+
+    return title

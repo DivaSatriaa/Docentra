@@ -24,6 +24,9 @@ func NewMessageHandler(
 type createMessageRequest struct {
 	Content string            `json:"content"`
 	Model   *client.LLMConfig `json:"model,omitempty"`
+
+	// Optional: restrict the search to these documents.
+	DocumentIDs []string `json:"document_ids,omitempty"`
 }
 
 func (h *MessageHandler) Create(c *gin.Context) {
@@ -43,6 +46,7 @@ func (h *MessageHandler) Create(c *gin.Context) {
 		conversationID,
 		req.Content,
 		req.Model,
+		req.DocumentIDs,
 	)
 	if err != nil {
 		if err.Error() == "conversation not found" {
@@ -104,4 +108,30 @@ func (h *MessageHandler) GetByID(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, message)
+}
+
+type generateTitleRequest struct {
+	Model *client.LLMConfig `json:"model,omitempty"`
+}
+
+// GenerateTitle names the conversation from its first exchange.
+func (h *MessageHandler) GenerateTitle(c *gin.Context) {
+	var req generateTitleRequest
+
+	// The body is optional.
+	_ = c.ShouldBindJSON(&req)
+
+	conversation, err := h.service.GenerateTitle(
+		c.Request.Context(),
+		c.Param("id"),
+		req.Model,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, conversation)
 }

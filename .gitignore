@@ -27,3 +27,6 @@ backend/storage/
 ai-service/.venv/
 __pycache__/
 *.pyc
+
+# dev.sh state and logs
+.dev/

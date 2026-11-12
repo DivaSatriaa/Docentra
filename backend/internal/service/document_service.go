@@ -87,7 +87,13 @@ func (s *DocumentService) Create(
 		return nil, err
 	}
 
-	go func(documentID string) {
+	s.processInBackground(created.ID)
+
+	return created, nil
+}
+
+func (s *DocumentService) processInBackground(documentID string) {
+	go func() {
 		processingCtx, cancel := context.WithTimeout(
 			context.Background(),
 			15*time.Minute,
@@ -104,9 +110,37 @@ func (s *DocumentService) Create(
 				err,
 			)
 		}
-	}(created.ID)
+	}()
+}
 
-	return created, nil
+// Reprocess runs extraction, chunking and embedding again for a document,
+// e.g. to retry after a failure.
+func (s *DocumentService) Reprocess(
+	ctx context.Context,
+	id string,
+) (*model.Document, error) {
+	id = strings.TrimSpace(id)
+
+	if id == "" {
+		return nil, fmt.Errorf("document id is required")
+	}
+
+	document, err := s.repository.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if document.ProcessingStatus == "processing" {
+		return document, nil
+	}
+
+	if err := s.repository.MarkPending(ctx, id); err != nil {
+		return nil, err
+	}
+
+	s.processInBackground(id)
+
+	return s.repository.GetByID(ctx, id)
 }
 
 func (s *DocumentService) ListByWorkspace(

@@ -13,18 +13,12 @@ import { useEffect, useState } from "react"
 
 import logo from "../../assets/docentra-logo.png"
 import FileTypeIcon from "../common/FileTypeIcon"
+import { useRecentDocuments } from "../../lib/documents"
 
 const API_BASE_URL = "http://localhost:8080"
 
 const WORKSPACE_ID =
   "5400fe40-1e5a-4d63-9ffe-06fb12621540"
-
-const recentDocuments = [
-  { name: "Machine Learning.pdf", type: "pdf" },
-  { name: "Sistem Pakar.docx", type: "docx" },
-  { name: "Tugas Akhir.pdf", type: "pdf" },
-  { name: "Data Mining.pdf", type: "pdf" },
-]
 
 type Page =
   | "chat"
@@ -51,6 +45,8 @@ interface SidebarProps {
     deletedId: string,
     replacementId: string | null,
   ) => void
+  /** Change this value to make the sidebar reload its chat list. */
+  refreshKey?: number
 }
 
 export default function Sidebar({
@@ -60,7 +56,13 @@ export default function Sidebar({
   onSelectConversation,
   onNewChat,
   onDeleteConversation,
+  refreshKey = 0,
 }: SidebarProps) {
+  // Reloads whenever the user switches page, so new uploads show up.
+  const recentDocuments = useRecentDocuments(
+    refreshKey + (activePage === "documents" ? 0 : 1),
+  )
+
   const [conversations, setConversations] = useState<
     Conversation[]
   >([])
@@ -119,9 +121,50 @@ export default function Sidebar({
     }
   }
 
+  // Initial load and reloads requested by the parent. State is only set
+  // once the request settles, so the spinner doesn't flash on refresh.
   useEffect(() => {
-    void loadConversations()
-  }, [])
+    let cancelled = false
+
+    fetch(
+      `${API_BASE_URL}/api/v1/workspaces/${WORKSPACE_ID}/conversations`,
+    )
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(
+            `Failed to load conversations: ${response.status}`,
+          )
+        }
+
+        return (await response.json()) as Conversation[]
+      })
+      .then((data) => {
+        if (cancelled) return
+
+        setConversationError("")
+        setConversations(
+          [...data].sort(
+            (a, b) =>
+              new Date(b.updated_at).getTime() -
+              new Date(a.updated_at).getTime(),
+          ),
+        )
+      })
+      .catch((error) => {
+        console.error("Failed to load conversations:", error)
+
+        if (!cancelled) {
+          setConversationError("Unable to load chats.")
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingConversations(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [refreshKey])
 
   useEffect(() => {
     function handleWindowFocus() {
@@ -388,19 +431,26 @@ export default function Sidebar({
                 .slice(0, 2)
                 .map((document) => (
                   <button
-                    key={document.name}
+                    key={document.id}
+                    onClick={() => onNavigate("documents")}
                     className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition hover:bg-white/[0.04]"
                   >
                     <FileTypeIcon
-                      type={document.type}
+                      type={document.extension ?? ""}
                       size={17}
                     />
 
                     <span className="truncate text-[11px] text-white/45">
-                      {document.name}
+                      {document.name || document.original_name}
                     </span>
                   </button>
                 ))}
+
+              {recentDocuments.length === 0 && (
+                <p className="px-1.5 py-1 text-[11px] text-white/25">
+                  No documents yet
+                </p>
+              )}
             </div>
           </div>
 

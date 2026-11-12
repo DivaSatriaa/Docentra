@@ -11,7 +11,7 @@ from app.rag.vector_store import (
     delete_chunks,
     store_chunks,
 )
-from app.services.pdf_loader import load_pdf
+from app.services.loaders import load_document
 
 
 load_dotenv()
@@ -47,11 +47,17 @@ def get_document(document_id: str) -> dict:
 def update_processing_status(
     document_id: str,
     status: str,
+    *,
+    error: str | None = None,
+    page_count: int | None = None,
 ) -> None:
+    """Set the status; `error` is stored (and cleared on any non-failed status)."""
     query = """
         UPDATE documents
         SET
             processing_status = %s,
+            processing_error = %s,
+            page_count = COALESCE(%s, page_count),
             updated_at = NOW()
         WHERE id = %s
     """
@@ -60,10 +66,20 @@ def update_processing_status(
         with connection.cursor() as cursor:
             cursor.execute(
                 query,
-                (status, UUID(document_id)),
+                (status, error, page_count, UUID(document_id)),
             )
 
         connection.commit()
+
+
+def _friendly_error(error: Exception) -> str:
+    """A short reason the user can act on."""
+    message = str(error).strip() or error.__class__.__name__
+
+    if isinstance(error, (ValueError, FileNotFoundError)):
+        return message[:500]
+
+    return f"Could not read this file ({error.__class__.__name__}: {message})"[:500]
 
 
 def process_document(document_id: str) -> dict:
@@ -88,7 +104,7 @@ def process_document(document_id: str) -> dict:
             document["storage_path"],
         )
 
-        pages = load_pdf(file_path)
+        pages = load_document(file_path)
 
         all_chunks: list[dict] = []
 
@@ -105,7 +121,8 @@ def process_document(document_id: str) -> dict:
 
         if not all_chunks:
             raise ValueError(
-                "document contains no extractable text"
+                "No readable text was found in this file. "
+                "If it is a scanned document, it needs OCR first."
             )
 
         texts = [
@@ -124,6 +141,7 @@ def process_document(document_id: str) -> dict:
         update_processing_status(
             document_id,
             "ready",
+            page_count=len(pages),
         )
 
         return {
@@ -133,9 +151,10 @@ def process_document(document_id: str) -> dict:
             "status": "ready",
         }
 
-    except Exception:
+    except Exception as error:
         update_processing_status(
             document_id,
             "failed",
+            error=_friendly_error(error),
         )
         raise

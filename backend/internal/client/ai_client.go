@@ -103,17 +103,20 @@ type ChatRequest struct {
 }
 
 type Citation struct {
-	DocumentID   string `json:"document_id"`
-	DocumentName string `json:"document_name"`
-	Page         int    `json:"page"`
-	ChunkID      string `json:"chunk_id"`
-	Snippet      string `json:"snippet"`
+	Source       int     `json:"source,omitempty"`
+	Similarity   float64 `json:"similarity,omitempty"`
+	DocumentID   string  `json:"document_id"`
+	DocumentName string  `json:"document_name"`
+	Page         int     `json:"page"`
+	ChunkID      string  `json:"chunk_id"`
+	Snippet      string  `json:"snippet"`
 }
 
 type ChatResponse struct {
 	Answer      string     `json:"answer"`
 	Citations   []Citation `json:"citations"`
 	SearchQuery string     `json:"search_query"`
+	Scope       []string   `json:"scope"`
 }
 
 func (c *AIClient) Chat(
@@ -246,4 +249,59 @@ func (c *AIClient) ListModels(
 	}
 
 	return result.Models, nil
+}
+
+type titleRequest struct {
+	Question string     `json:"question"`
+	Answer   string     `json:"answer"`
+	LLM      *LLMConfig `json:"llm,omitempty"`
+}
+
+// GenerateTitle asks the AI service for a short chat title.
+func (c *AIClient) GenerateTitle(
+	ctx context.Context,
+	question string,
+	answer string,
+	llm *LLMConfig,
+) (string, error) {
+	body, err := json.Marshal(titleRequest{
+		Question: question,
+		Answer:   answer,
+		LLM:      llm,
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshal title request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.baseURL+"/internal/title",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		return "", fmt.Errorf("create title request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("call AI service: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("AI title service returned HTTP %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Title string `json:"title"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("decode title response: %w", err)
+	}
+
+	return result.Title, nil
 }

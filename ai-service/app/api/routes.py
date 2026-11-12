@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.rag.chat import chat
-from app.rag.llm import list_models
+from app.rag.llm import generate_title, list_models
 from app.services.document_processor import process_document
 
 
@@ -29,6 +29,12 @@ class ListModelsRequest(BaseModel):
     provider: str
     api_key: str = ""
     base_url: str = ""
+
+
+class TitleRequest(BaseModel):
+    question: str
+    answer: str = ""
+    llm: LLMConfig | None = None
 
 
 class ChatRequest(BaseModel):
@@ -126,4 +132,28 @@ async def list_models_route(
         raise HTTPException(
             status_code=502,
             detail=f"could not list models: {error}",
+        ) from error
+
+
+
+@router.post("/internal/title")
+async def title_route(
+    request: TitleRequest,
+):
+    try:
+        title = generate_title(
+            request.question,
+            request.answer,
+            request.llm.model_dump() if request.llm else None,
+        )
+
+        return {"title": title}
+
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=502,
+            detail=f"title generation failed: {error}",
         ) from error

@@ -173,23 +173,36 @@ Screenshots will be added here as the application reaches a more complete UI sta
 
 ## 🧪 Development
 
-### Frontend
+### Quick start
 
 ```bash
-npm install
-npm run dev
+./dev.sh           # Postgres + migrations, then AI service, backend and frontend in 3 terminal tabs
+./dev.sh --bg      # same, but in the background (logs in .dev/)
+./dev.sh status    # what is running
+./dev.sh stop      # stop the three services (add --db to stop Postgres too)
 ```
 
-### AI Service
+Then open http://localhost:5173. Local models need [Ollama](https://ollama.com) running;
+API models (OpenAI, Anthropic, Gemini, DeepSeek, ...) are configured in the app under **Settings**.
+
+### First-time setup
+
+1. Copy `backend/.env.example` to `backend/.env` and `ai-service/.env.example` to `ai-service/.env`.
+   The database password must match `docker-compose.yml`.
+2. AI service: create the virtualenv and install dependencies (see the notes at the top of
+   `ai-service/requirements.txt` for the CPU-only PyTorch install).
+3. `npm install` for the frontend.
+
+### Running each part manually
 
 ```bash
-cd ai-service
-
-source .venv/bin/activate
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+docker compose up -d                                  # Postgres + pgvector
+cd backend && go run ./cmd/migrate up                 # database migrations
+cd backend && go run ./cmd/server                     # API         :8080
+cd ai-service && source .venv/bin/activate \
+  && uvicorn app.main:app --host 0.0.0.0 --port 8000  # AI service  :8000
+npm install && npm run dev                            # frontend    :5173
 ```
-
-The exact setup may change as the project develops.
 
 ---
 

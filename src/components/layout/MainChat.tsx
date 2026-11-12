@@ -3,12 +3,18 @@ import {
   FileText,
   Globe2,
   Sparkles,
-  Upload,
 } from "lucide-react"
 import { useEffect, useState } from "react"
 
 import FileTypeIcon from "../common/FileTypeIcon"
 import ModelPicker from "../chat/ModelPicker"
+import DocumentScopePicker from "../chat/DocumentScopePicker"
+import UploadButton from "../chat/UploadButton"
+import {
+  formatFileSize,
+  useRecentDocuments,
+  type WorkspaceDocument,
+} from "../../lib/documents"
 import {
   toModelPayload,
   type ModelSelection,
@@ -36,25 +42,8 @@ const prompts = [
   },
 ]
 
-const documents = [
-  {
-    name: "Machine Learning.pdf",
-    size: "32 MB",
-    type: "pdf",
-  },
-  {
-    name: "Sistem Pakar.docx",
-    size: "1.2 MB",
-    type: "docx",
-  },
-  {
-    name: "Data Mining.pdf",
-    size: "18 MB",
-    type: "pdf",
-  },
-]
-
 type Citation = {
+  source?: number
   document_id: string
   document_name: string
   page: number
@@ -67,6 +56,7 @@ type Message = {
   role: "user" | "assistant"
   content: string
   citations?: Citation[]
+  scope?: string[]
 }
 
 type ApiMessage = {
@@ -77,6 +67,7 @@ type ApiMessage = {
 }
 
 type ApiResponse = {
+  scope?: string[]
   answer: string
   search_query: string
   citations: Citation[]
@@ -87,6 +78,10 @@ interface MainChatProps {
   modelSettings: ModelSettings
   onSelectModel: (selection: ModelSelection) => void
   onOpenSettings: () => void
+  /** Called after the chat gets an auto-generated title. */
+  onTitleChanged?: () => void
+  /** Open the Documents page. */
+  onOpenDocuments?: () => void
 }
 
 export default function MainChat({
@@ -94,7 +89,19 @@ export default function MainChat({
   modelSettings,
   onSelectModel,
   onOpenSettings,
+  onTitleChanged,
+  onOpenDocuments,
 }: MainChatProps) {
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
+  const [documentsVersion, setDocumentsVersion] = useState(0)
+  const recentDocuments = useRecentDocuments(documentsVersion)
+
+  function scopeToDocument(documentId: string) {
+    setSelectedDocIds((current) =>
+      current.includes(documentId) ? current : [...current, documentId],
+    )
+  }
+
   const [question, setQuestion] = useState("")
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -108,6 +115,7 @@ export default function MainChat({
     async function loadHistory() {
       setMessages([])
       setError("")
+      setSelectedDocIds([])
       setIsLoadingHistory(true)
 
       try {
@@ -171,6 +179,8 @@ export default function MainChat({
 
     setError("")
 
+    const isFirstExchange = messages.length === 0
+
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: "user",
@@ -196,6 +206,8 @@ export default function MainChat({
           body: JSON.stringify({
             content: trimmedQuestion,
             model: toModelPayload(modelSettings),
+            document_ids:
+              selectedDocIds.length > 0 ? selectedDocIds : undefined,
           }),
         },
       )
@@ -217,12 +229,17 @@ export default function MainChat({
         role: "assistant",
         content: data.answer,
         citations: data.citations,
+        scope: data.scope,
       }
 
       setMessages((current) => [
         ...current,
         assistantMessage,
       ])
+
+      if (isFirstExchange) {
+        void renameConversation()
+      }
     } catch (requestError) {
       console.error(
         "Failed to send message:",
@@ -234,6 +251,24 @@ export default function MainChat({
       )
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  async function renameConversation() {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/conversations/${conversationId}/title`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: toModelPayload(modelSettings) }),
+        },
+      )
+
+      if (response.ok) onTitleChanged?.()
+    } catch (renameError) {
+      // The default title is fine if this fails.
+      console.error("Failed to name conversation:", renameError)
     }
   }
 
@@ -272,12 +307,26 @@ export default function MainChat({
   }
 
   const picker = (
-    <ModelPicker
-      settings={modelSettings}
-      onSelect={onSelectModel}
-      onOpenSettings={onOpenSettings}
-      disabled={isLoading}
-    />
+    <>
+      <UploadButton
+        disabled={isLoading}
+        onReady={(documentId) => {
+          scopeToDocument(documentId)
+          setDocumentsVersion((value) => value + 1)
+        }}
+      />
+      <DocumentScopePicker
+        selectedIds={selectedDocIds}
+        onChange={setSelectedDocIds}
+        disabled={isLoading}
+      />
+      <ModelPicker
+        settings={modelSettings}
+        onSelect={onSelectModel}
+        onOpenSettings={onOpenSettings}
+        disabled={isLoading}
+      />
+    </>
   )
 
   return (
@@ -314,6 +363,9 @@ export default function MainChat({
           isLoading={isLoading}
           error={error}
           picker={picker}
+          recentDocuments={recentDocuments.slice(0, 3)}
+          onPickDocument={scopeToDocument}
+          onOpenDocuments={onOpenDocuments}
         />
       )}
     </main>
@@ -329,6 +381,9 @@ function WelcomeView({
   isLoading,
   error,
   picker,
+  recentDocuments,
+  onPickDocument,
+  onOpenDocuments,
 }: {
   question: string
   setQuestion: (value: string) => void
@@ -342,6 +397,9 @@ function WelcomeView({
   isLoading: boolean
   error: string
   picker: React.ReactNode
+  recentDocuments: WorkspaceDocument[]
+  onPickDocument: (documentId: string) => void
+  onOpenDocuments?: () => void
 }) {
   return (
     <div className="relative z-10 flex flex-1 overflow-y-auto px-8">
@@ -424,32 +482,43 @@ function WelcomeView({
               Recent Documents
             </h2>
 
-            <button className="text-[11px] text-white/28 transition hover:text-white/55">
+            <button
+              onClick={onOpenDocuments}
+              className="text-[11px] text-white/28 transition hover:text-white/55"
+            >
               View all
             </button>
           </div>
 
+          {recentDocuments.length === 0 && (
+            <p className="rounded-xl border border-dashed border-white/[0.08] px-4 py-5 text-center text-[12px] text-white/30">
+              No documents yet. Use Upload below to add your first one.
+            </p>
+          )}
+
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            {documents.map((document) => (
+            {recentDocuments.map((document) => (
               <button
-                key={document.name}
+                key={document.id}
+                onClick={() => onPickDocument(document.id)}
+                title="Ask about this document"
                 className="group flex h-[70px] items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.016] px-3.5 text-left transition duration-200 hover:border-white/[0.13] hover:bg-white/[0.025]"
               >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.035]">
                   <FileTypeIcon
-                    type={document.type}
+                    type={document.extension ?? ""}
                     size={24}
                   />
                 </div>
 
                 <div className="min-w-0">
                   <div className="truncate text-[12px] font-semibold leading-4 text-white/82">
-                    {document.name}
+                    {document.name || document.original_name}
                   </div>
 
                   <div className="mt-0.5 text-[10px] leading-4 text-white/32">
-                    {document.size} ·{" "}
-                    {document.type.toUpperCase()}
+                    {formatFileSize(document.file_size)} ·{" "}
+                    {(document.extension ?? "").toUpperCase()}
                   </div>
                 </div>
               </button>
@@ -513,6 +582,13 @@ function ConversationView({
                   >
                     {message.content}
                   </div>
+
+                  {message.scope && message.scope.length > 0 && (
+                    <p className="mt-2 text-[11px] text-white/30">
+                      Searched only in:{" "}
+                      {message.scope.join(", ")}
+                    </p>
+                  )}
 
                   {hasCitations && (
                     <CitationList
@@ -586,6 +662,12 @@ function CitationList({
 
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
+                  {citation.source !== undefined && (
+                    <span className="shrink-0 rounded-md bg-[#8E3A59]/[0.15] px-1.5 py-0.5 text-[9px] font-semibold text-[#C46A8A]">
+                      {citation.source}
+                    </span>
+                  )}
+
                   <span className="truncate text-[11px] font-medium text-white/72">
                     {citation.document_name}
                   </span>
@@ -651,16 +733,7 @@ function Composer({
 
       <div className="flex items-center justify-between px-1 pb-1">
         <div className="flex items-center gap-2">
-          <button
-            disabled={isLoading}
-            className="flex items-center gap-2 rounded-lg border border-white/[0.08] px-3.5 py-2 text-[12px] text-white/50 transition hover:bg-white/[0.04] hover:text-white disabled:opacity-40"
-          >
-            <Upload
-              size={14}
-              strokeWidth={1.8}
-            />
-            Upload
-          </button>
+          {picker}
 
           <button
             disabled={isLoading}
@@ -672,8 +745,6 @@ function Composer({
             />
             Web Search
           </button>
-
-          {picker}
         </div>
 
         <button

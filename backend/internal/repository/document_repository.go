@@ -45,6 +45,7 @@ func (r *DocumentRepository) Create(
 			file_size,
 			storage_path,
 			processing_status,
+			processing_error,
 			page_count,
 			created_at,
 			updated_at
@@ -74,6 +75,7 @@ func (r *DocumentRepository) Create(
 		&created.FileSize,
 		&created.StoragePath,
 		&created.ProcessingStatus,
+		&created.ProcessingError,
 		&created.PageCount,
 		&created.CreatedAt,
 		&created.UpdatedAt,
@@ -101,6 +103,7 @@ func (r *DocumentRepository) ListByWorkspace(
 			file_size,
 			storage_path,
 			processing_status,
+			processing_error,
 			page_count,
 			created_at,
 			updated_at
@@ -130,6 +133,7 @@ func (r *DocumentRepository) ListByWorkspace(
 			&document.FileSize,
 			&document.StoragePath,
 			&document.ProcessingStatus,
+			&document.ProcessingError,
 			&document.PageCount,
 			&document.CreatedAt,
 			&document.UpdatedAt,
@@ -162,6 +166,7 @@ func (r *DocumentRepository) GetByID(
 			file_size,
 			storage_path,
 			processing_status,
+			processing_error,
 			page_count,
 			created_at,
 			updated_at
@@ -181,6 +186,7 @@ func (r *DocumentRepository) GetByID(
 		&document.FileSize,
 		&document.StoragePath,
 		&document.ProcessingStatus,
+		&document.ProcessingError,
 		&document.PageCount,
 		&document.CreatedAt,
 		&document.UpdatedAt,
@@ -218,6 +224,7 @@ func (r *DocumentRepository) UpdateName(
 			file_size,
 			storage_path,
 			processing_status,
+			processing_error,
 			page_count,
 			created_at,
 			updated_at
@@ -240,6 +247,7 @@ func (r *DocumentRepository) UpdateName(
 		&document.FileSize,
 		&document.StoragePath,
 		&document.ProcessingStatus,
+		&document.ProcessingError,
 		&document.PageCount,
 		&document.CreatedAt,
 		&document.UpdatedAt,
@@ -273,6 +281,7 @@ func (r *DocumentRepository) Delete(
 			file_size,
 			storage_path,
 			processing_status,
+			processing_error,
 			page_count,
 			created_at,
 			updated_at
@@ -294,6 +303,7 @@ func (r *DocumentRepository) Delete(
 		&document.FileSize,
 		&document.StoragePath,
 		&document.ProcessingStatus,
+		&document.ProcessingError,
 		&document.PageCount,
 		&document.CreatedAt,
 		&document.UpdatedAt,
@@ -308,4 +318,24 @@ func (r *DocumentRepository) Delete(
 	}
 
 	return &document, nil
+}
+// MarkPending resets a document so it can be processed again.
+func (r *DocumentRepository) MarkPending(
+	ctx context.Context,
+	id string,
+) error {
+	_, err := r.db.Exec(
+		ctx,
+		`UPDATE documents
+		 SET processing_status = 'pending',
+		     processing_error = NULL,
+		     updated_at = NOW()
+		 WHERE id = $1`,
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("mark document pending: %w", err)
+	}
+
+	return nil
 }

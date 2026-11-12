@@ -142,6 +142,11 @@ func Setup(
 			documentHandler.Rename,
 		)
 
+		workspaces.POST(
+			"/:id/documents/:documentId/reprocess",
+			documentHandler.Reprocess,
+		)
+
 		workspaces.DELETE(
 			"/:id/documents/:documentId",
 			documentHandler.Delete,
@@ -185,6 +190,11 @@ func Setup(
 		conversations.POST(
 			"/:id/messages",
 			messageHandler.Create,
+		)
+
+		conversations.POST(
+			"/:id/title",
+			messageHandler.GenerateTitle,
 		)
 
 		conversations.GET(

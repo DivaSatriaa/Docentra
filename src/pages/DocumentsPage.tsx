@@ -31,6 +31,7 @@ type Document = {
   file_size: number
   storage_path: string
   processing_status: string
+  processing_error?: string | null
   page_count?: number | null
   created_at: string
   updated_at: string
@@ -459,6 +460,22 @@ export default function DocumentsPage() {
     }
   }
 
+  async function handleRetry(documentId: string) {
+    try {
+      await fetch(
+        `${API_BASE_URL}/api/v1/workspaces/${WORKSPACE_ID}/documents/${documentId}/reprocess`,
+        { method: "POST" },
+      )
+    } catch (requestError) {
+      console.error(
+        "Failed to retry document:",
+        requestError,
+      )
+    } finally {
+      void loadDocuments(false)
+    }
+  }
+
   useEffect(() => {
     void loadDocuments(true)
   }, [])
@@ -861,6 +878,16 @@ export default function DocumentsPage() {
                             {status.label}
                           </span>
                         </div>
+
+                        {document.processing_status.toLowerCase() ===
+                          "failed" && (
+                          <FailureNote
+                            reason={document.processing_error}
+                            onRetry={() =>
+                              void handleRetry(document.id)
+                            }
+                          />
+                        )}
                       </div>
                     </div>
                   )
@@ -942,6 +969,16 @@ export default function DocumentsPage() {
                             </>
                           )}
                         </div>
+
+                        {document.processing_status.toLowerCase() ===
+                          "failed" && (
+                          <FailureNote
+                            reason={document.processing_error}
+                            onRetry={() =>
+                              void handleRetry(document.id)
+                            }
+                          />
+                        )}
                       </div>
 
                       <span
@@ -1106,3 +1143,38 @@ export default function DocumentsPage() {
     </main>
   )
 } 
+/** Why processing failed, with a retry action. */
+function FailureNote({
+  reason,
+  onRetry,
+}: {
+  reason?: string | null
+  onRetry: () => void
+}) {
+  return (
+    <div className="mt-3 rounded-lg border border-red-400/10 bg-red-400/[0.04] px-2.5 py-2 text-[11px] leading-4 text-red-200/70">
+      <span>
+        {reason?.trim() ||
+          "Processing failed. Try again."}
+      </span>{" "}
+      <span
+        role="button"
+        tabIndex={0}
+        onClick={(event) => {
+          event.stopPropagation()
+          onRetry()
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault()
+            event.stopPropagation()
+            onRetry()
+          }
+        }}
+        className="cursor-pointer font-medium text-red-200 underline underline-offset-2 hover:text-white"
+      >
+        Retry
+      </span>
+    </div>
+  )
+}
