@@ -13,6 +13,9 @@ import {
   X,
 } from "lucide-react"
 import {
+  lazy,
+  Suspense,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -26,6 +29,7 @@ import FileTypeIcon from "../common/FileTypeIcon"
 import ModelPicker from "../chat/ModelPicker"
 import DocumentScopePicker from "../chat/DocumentScopePicker"
 import UploadButton from "../chat/UploadButton"
+import type { ViewerSource } from "../viewer/SourceViewer"
 import BrandMark from "../ui/BrandMark"
 import Sparkle from "../ui/Sparkle"
 import { AmbientGlow } from "../ui/Page"
@@ -40,6 +44,9 @@ import {
   type ModelSelection,
   type ModelSettings,
 } from "../../lib/modelSettings"
+
+// The viewer pulls in pdf.js, so load it only when a source is opened.
+const SourceViewer = lazy(() => import("../viewer/SourceViewer"))
 
 const PROMPTS = [
   {
@@ -75,6 +82,8 @@ type Citation = {
   page: number
   chunk_id: string
   snippet: string
+  /** Exact passages the answer relied on, highlighted in the viewer. */
+  highlights?: string[]
 }
 
 type Message = {
@@ -89,6 +98,7 @@ type ApiMessage = {
   id: string
   role: "user" | "assistant" | "system"
   content: string
+  citations?: Citation[] | null
   created_at: string
 }
 
@@ -142,7 +152,20 @@ export default function MainChat({
   const [isLoadingHistory, setIsLoadingHistory] = useState(true)
   const [error, setError] = useState("")
   const [failedQuestion, setFailedQuestion] = useState<string | null>(null)
+  const [activeSource, setActiveSource] = useState<ViewerSource | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  const openSource = (citation: Citation, n: number) =>
+    setActiveSource({
+      key: crypto.randomUUID(),
+      source: n,
+      document_id: citation.document_id,
+      document_name: citation.document_name,
+      page: citation.page,
+      snippet: citation.snippet,
+      highlights: citation.highlights,
+    })
+  const closeSource = useCallback(() => setActiveSource(null), [])
 
   // The parent remounts this component per conversation, so this runs once per chat.
   useEffect(() => {
@@ -164,7 +187,12 @@ export default function MainChat({
             (m): m is ApiMessage & { role: "user" | "assistant" } =>
               m.role === "user" || m.role === "assistant",
           )
-          .map((m) => ({ id: m.id, role: m.role, content: m.content }))
+          .map((m) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            citations: m.citations ?? undefined,
+          }))
 
         setMessages(loaded)
         onMessageCountChange?.(loaded.length)
@@ -347,6 +375,7 @@ export default function MainChat({
   )
 
   return (
+    <div className="relative flex min-h-0 min-w-0 flex-1">
     <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <AmbientGlow />
 
@@ -364,6 +393,8 @@ export default function MainChat({
           scopeCount={selectedDocIds.length}
           composer={composer}
           errorBanner={errorBanner}
+          onOpenSource={openSource}
+          activeSourceKey={activeSource ? `${activeSource.document_id}:${activeSource.source}` : null}
         />
       ) : (
         <div className="relative z-10 flex flex-1 overflow-y-auto px-4 sm:px-8">
@@ -472,6 +503,13 @@ export default function MainChat({
         </div>
       )}
     </main>
+
+    {activeSource && (
+      <Suspense fallback={null}>
+        <SourceViewer source={activeSource} onClose={closeSource} />
+      </Suspense>
+    )}
+    </div>
   )
 }
 
@@ -481,12 +519,16 @@ function ConversationView({
   scopeCount,
   composer,
   errorBanner,
+  onOpenSource,
+  activeSourceKey,
 }: {
   messages: Message[]
   isLoading: boolean
   scopeCount: number
   composer: ReactNode
   errorBanner: ReactNode
+  onOpenSource: (citation: Citation, n: number) => void
+  activeSourceKey: string | null
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -504,7 +546,12 @@ function ConversationView({
             message.role === "user" ? (
               <UserMessage key={message.id} content={message.content} />
             ) : (
-              <AssistantMessage key={message.id} message={message} />
+              <AssistantMessage
+                key={message.id}
+                message={message}
+                onOpenSource={onOpenSource}
+                activeSourceKey={activeSourceKey}
+              />
             ),
           )}
 
@@ -549,7 +596,15 @@ function AssistantAvatar() {
   )
 }
 
-function AssistantMessage({ message }: { message: Message }) {
+function AssistantMessage({
+  message,
+  onOpenSource,
+  activeSourceKey,
+}: {
+  message: Message
+  onOpenSource: (citation: Citation, n: number) => void
+  activeSourceKey: string | null
+}) {
   const toast = useToast()
   const [copied, setCopied] = useState(false)
   const [highlighted, setHighlighted] = useState<number | null>(null)
@@ -563,6 +618,8 @@ function AssistantMessage({ message }: { message: Message }) {
       : message.content
 
   function focusCitation(n: number) {
+    const index = citations.findIndex((c, i) => (c.source ?? i + 1) === n)
+    if (index !== -1) onOpenSource(citations[index], n)
     setShowSources(true)
     setHighlighted(n)
     window.setTimeout(() => setHighlighted(null), 1600)
@@ -659,14 +716,18 @@ function AssistantMessage({ message }: { message: Message }) {
             {citations.map((citation, index) => {
               const n = citation.source ?? index + 1
               return (
-                <div
+                <button
+                  type="button"
                   key={`${citation.chunk_id}-${index}`}
                   id={`${message.id}-src-${n}`}
+                  onClick={() => onOpenSource(citation, n)}
+                  title="Show this passage in the document"
                   className={[
-                    "rounded-xl border px-3 py-2.5 transition duration-300",
-                    highlighted === n
+                    "w-full rounded-xl border px-3 py-2.5 text-left transition duration-300",
+                    highlighted === n ||
+                    activeSourceKey === `${citation.document_id}:${n}`
                       ? "border-brand-400/70 bg-brand-500/[0.12]"
-                      : "border-white/[0.07] bg-white/[0.02]",
+                      : "border-white/[0.07] bg-white/[0.02] hover:border-white/[0.16] hover:bg-white/[0.04]",
                   ].join(" ")}
                 >
                   <div className="flex items-center gap-2">
@@ -683,7 +744,7 @@ function AssistantMessage({ message }: { message: Message }) {
                       {citation.snippet.trim()}
                     </p>
                   )}
-                </div>
+                </button>
               )
             })}
           </div>

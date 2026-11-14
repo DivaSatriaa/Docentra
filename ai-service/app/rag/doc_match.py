@@ -73,7 +73,11 @@ def match_documents(
         for size in range(len(stem_tokens), 1, -1):
             for start in range(0, len(stem_tokens) - size + 1):
                 window = stem_tokens[start : start + size]
-                if not all(_distinctive(t) for t in window):
+                # Numbers count inside a phrase ("giat 17"), but a window
+                # needs at least one real word to be distinctive.
+                if not all(_distinctive(t) or t.isdigit() for t in window):
+                    continue
+                if not any(_distinctive(t) for t in window):
                     continue
                 if f" {' '.join(window)} " in f" {question_text} ":
                     found = True

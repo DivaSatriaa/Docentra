@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -231,6 +232,7 @@ func (h *DocumentHandler) Rename(c *gin.Context) {
 
 	c.JSON(http.StatusOK, document)
 }
+
 // Reprocess retries processing for a document.
 func (h *DocumentHandler) Reprocess(c *gin.Context) {
 	document, err := h.service.Reprocess(
@@ -248,4 +250,54 @@ func (h *DocumentHandler) Reprocess(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusAccepted, document)
+}
+
+// File streams the original uploaded file, inline, for the source viewer.
+func (h *DocumentHandler) File(c *gin.Context) {
+	document, err := h.service.GetByID(
+		c.Request.Context(),
+		c.Param("documentId"),
+	)
+	if err != nil {
+		status := http.StatusBadRequest
+		if err.Error() == "document not found" {
+			status = http.StatusNotFound
+		}
+
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Only ever serve files from inside the storage directory.
+	storageRoot, err := filepath.Abs("storage")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "storage unavailable"})
+		return
+	}
+
+	path, err := filepath.Abs(document.StoragePath)
+	if err != nil || !strings.HasPrefix(path, storageRoot+string(os.PathSeparator)) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid document path"})
+		return
+	}
+
+	if _, err := os.Stat(path); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "the file is missing on the server",
+		})
+		return
+	}
+
+	mimeType := document.MimeType
+	if mimeType == "" || mimeType == "application/octet-stream" {
+		mimeType = mimeTypeFromExtension(strings.ToLower(filepath.Ext(path)))
+	}
+
+	c.Header("Content-Type", mimeType)
+	c.Header("Content-Disposition", mime.FormatMediaType(
+		"inline",
+		map[string]string{"filename": document.OriginalName},
+	))
+	c.Header("Cache-Control", "private, max-age=300")
+	c.File(path)
 }

@@ -171,6 +171,15 @@ func Setup(
 	// Conversations
 	// =========================
 
+	// =========================
+	// Document files (source viewer)
+	// =========================
+
+	api.GET(
+		"/documents/:documentId/file",
+		documentHandler.File,
+	)
+
 	conversations := api.Group("/conversations")
 	{
 		conversations.GET(

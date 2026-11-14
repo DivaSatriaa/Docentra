@@ -17,6 +17,13 @@ load_dotenv()
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:4b-instruct")
+# Largest context window we ask Ollama for. The window is sized per request
+# (see _ollama_num_ctx): a bigger window costs memory and can push the model
+# partly onto the CPU, so short prompts keep a small one.
+OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "16384"))
+OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "900"))
+# Room left for the answer on top of the prompt.
+_ANSWER_TOKENS = 1536
 
 OPENAI_BASE = "https://api.openai.com/v1"
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai"
@@ -85,11 +92,31 @@ def generate(prompt: str, llm: dict | None = None) -> str:
     return _openai_compatible(prompt, model, api_key, base)
 
 
+def _ollama_num_ctx(prompt: str) -> int:
+    """Smallest window (4k, 8k, 16k, ...) that fits the prompt and an answer.
+
+    Ollama's default window is small and silently drops the start of longer
+    prompts, which loses most of the document context. Fixed sizes (instead
+    of the exact count) avoid reloading the model on every request.
+    """
+    # Rough token estimate: ~3 characters per token for Indonesian/English.
+    needed = len(prompt) // 3 + _ANSWER_TOKENS
+    size = 4096
+    while size < needed and size < OLLAMA_NUM_CTX:
+        size *= 2
+    return min(size, OLLAMA_NUM_CTX)
+
+
 def _ollama(prompt: str, model: str) -> str:
     response = requests.post(
         f"{OLLAMA_URL}/api/generate",
-        json={"model": model, "prompt": prompt, "stream": False},
-        timeout=300,
+        json={
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"num_ctx": _ollama_num_ctx(prompt)},
+        },
+        timeout=OLLAMA_TIMEOUT,
     )
     _raise_for_status(response)
     return response.json()["response"].strip()

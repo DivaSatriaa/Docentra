@@ -110,6 +110,8 @@ type Citation struct {
 	Page         int     `json:"page"`
 	ChunkID      string  `json:"chunk_id"`
 	Snippet      string  `json:"snippet"`
+	// Exact passages of the document the answer relied on, for highlighting.
+	Highlights []string `json:"highlights,omitempty"`
 }
 
 type ChatResponse struct {

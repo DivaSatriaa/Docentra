@@ -265,3 +265,80 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Source viewer: highlighted passages */
+mark.src-hl {
+  background: rgb(250 204 21 / 0.42);
+  color: inherit;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgb(250 204 21 / 0.25);
+}
+/* pdf.js draws transparent text over the canvas; keep it transparent. */
+.pdf-view .textLayer mark.src-hl {
+  color: transparent;
+  background: rgb(250 204 21 / 0.38);
+  margin: 0;
+  padding: 0;
+}
+mark.src-hl-pulse { animation: src-hl-pulse 1.4s ease-out 1; }
+@keyframes src-hl-pulse {
+  0%, 30% { box-shadow: 0 0 0 4px rgb(250 204 21 / 0.55); }
+  100% { box-shadow: 0 0 0 1px rgb(250 204 21 / 0.25); }
+}
+
+/* Source viewer: DOCX pages on the dark canvas */
+.docx-view .docx-wrapper {
+  background: transparent;
+  padding: 16px 12px;
+  align-items: center;
+}
+.docx-view .docx-wrapper > section.docx {
+  margin-bottom: 12px;
+  box-shadow: 0 8px 30px -10px rgba(0, 0, 0, 0.7);
+  border-radius: 6px;
+}
+
+/* Source viewer: pdf.js text layer (transparent, selectable text over the canvas) */
+.pdf-view .textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 0;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+.pdf-view .textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  margin: 0;
+  transform-origin: 0 0;
+}
+.pdf-view .textLayer > :not(.markedContent),
+.pdf-view .textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+.pdf-view .textLayer .markedContent { display: contents; }
+.pdf-view .textLayer ::selection { background: rgb(142 58 89 / 0.35); }
+.pdf-view .textLayer br::selection { background: transparent; }
+.pdf-view .textLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+}
