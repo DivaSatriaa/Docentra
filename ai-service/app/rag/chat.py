@@ -1,13 +1,23 @@
 import os
 import re
 
+from app.rag.citations import (
+    cited_sources,
+    claims_by_source,
+    highlights_for,
+    renumber,
+)
 from app.rag.context import build_context
 from app.rag.doc_match import list_documents, match_documents
 from app.rag.embeddings import create_embeddings
 from app.rag.lang import not_found_message
 from app.rag.generation import generate_answer
 from app.rag.query_rewriter import rewrite_query
-from app.rag.retriever import hybrid_search_chunks
+from app.rag.retriever import (
+    document_chunks,
+    hybrid_search_chunks,
+    scope_text_length,
+)
 from app.rag.snippet import best_snippet
 
 
@@ -25,6 +35,28 @@ CANDIDATE_MULTIPLIER = 2
 KEYWORD_KEEP_RANK = int(os.getenv("RAG_KEYWORD_KEEP_RANK", "5"))
 KEYWORD_MIN_SIMILARITY = float(os.getenv("RAG_KEYWORD_MIN_SIMILARITY", "0.18"))
 
+# Full-document mode: when the documents in play are this small (in
+# characters), the model reads all of them instead of a handful of chunks.
+# Search alone can't answer "list everything" questions, because the items
+# are spread over the whole document. ~24k chars is roughly 7-8k tokens.
+FULL_CONTEXT_CHARS = int(os.getenv("RAG_FULL_CONTEXT_CHARS", "24000"))
+
+# Without an explicit scope, read a whole document when at least this share
+# of the search hits come from it.
+DOMINANT_SHARE = float(os.getenv("RAG_DOMINANT_SHARE", "0.6"))
+
+# "List everything" questions get more chunks when the full document is
+# too big to send.
+LIST_TOP_K = int(os.getenv("RAG_LIST_TOP_K", "16"))
+
+_LIST_INTENT = re.compile(
+    r"\b(apa\s+(saja|aja|sajakah)|siapa\s+(saja|aja)|mana\s+(saja|aja)|"
+    r"sebutkan|sebutin|daftar(kan)?|semua(nya)?|seluruh(nya)?|"
+    r"berapa\s+(banyak|jumlah)|ada\s+berapa|list|all\s+the|what\s+are|"
+    r"every|each|enumerate)\b",
+    re.IGNORECASE,
+)
+
 # If the model itself says it can't answer, don't attach sources.
 _CANNOT_ANSWER = (
     "don't have enough information",
@@ -40,27 +72,18 @@ _CANNOT_ANSWER = (
 # When the model cites nothing, fall back to this many top sources.
 FALLBACK_CITATIONS = 2
 
-_CITATION_GROUP = re.compile(r"\[([^\]]{1,40})\]")
-_CITATION_BODY = re.compile(
-    r"^(?:source\s*)?\d+(?:\s*[,;]\s*(?:source\s*)?\d+)*$",
-    re.IGNORECASE,
-)
+
+def is_list_question(text: str) -> bool:
+    return bool(_LIST_INTENT.search(text))
 
 
-def extract_cited_sources(answer: str, max_source: int) -> list[int]:
-    """Source numbers the answer cites, like [1] or [Source 2, 3], in order."""
-    cited: list[int] = []
+def _dominant_document(results: list[dict]) -> str | None:
+    counts: dict[str, int] = {}
+    for result in results:
+        counts[result["document_id"]] = counts.get(result["document_id"], 0) + 1
 
-    for group in _CITATION_GROUP.findall(answer):
-        if not _CITATION_BODY.match(group.strip()):
-            continue
-
-        for number in re.findall(r"\d+", group):
-            value = int(number)
-            if 1 <= value <= max_source and value not in cited:
-                cited.append(value)
-
-    return cited
+    document_id, count = max(counts.items(), key=lambda item: item[1])
+    return document_id if count / len(results) >= DOMINANT_SHARE else None
 
 
 def chat(
@@ -103,6 +126,10 @@ def chat(
         llm,
     )
 
+    wants_list = is_list_question(question) or is_list_question(search_query)
+    if wants_list:
+        top_k = max(top_k, LIST_TOP_K)
+
     query_embedding = create_embeddings(
         [search_query],
     )[0]
@@ -144,6 +171,7 @@ def chat(
     if not results and scope:
         results = retrieve(None)
         scope = []
+        document_ids = None
 
     if not results:
         return {
@@ -153,6 +181,17 @@ def chat(
             "scope": scope,
         }
 
+    # Read whole documents when they are small enough: the scoped ones, or
+    # the one document most hits came from.
+    full_ids = document_ids or (
+        [doc] if (doc := _dominant_document(results)) else None
+    )
+    if full_ids and not collection_id:
+        if scope_text_length(full_ids) <= FULL_CONTEXT_CHARS:
+            full = document_chunks(query_embedding, full_ids)
+            if full:
+                results = full
+
     context = build_context(results)
 
     answer = generate_answer(
@@ -161,28 +200,47 @@ def chat(
         llm,
     )
 
-    cited = extract_cited_sources(answer, len(results))
+    max_source = len(results)
+    cited = cited_sources(answer, max_source)
 
     if any(phrase in answer.lower() for phrase in _CANNOT_ANSWER):
         cited = []
     elif not cited:
-        cited = list(range(1, min(FALLBACK_CITATIONS, len(results)) + 1))
+        by_relevance = sorted(
+            range(1, max_source + 1),
+            key=lambda n: results[n - 1]["similarity"],
+            reverse=True,
+        )
+        cited = by_relevance[:FALLBACK_CITATIONS]
 
-    citations = [
-        {
-            "source": number,
-            "document_id": results[number - 1]["document_id"],
-            "document_name": results[number - 1]["document_name"],
-            "page": results[number - 1]["page"],
-            "chunk_id": results[number - 1]["chunk_id"],
-            "snippet": best_snippet(
-                results[number - 1]["text"],
-                search_query,
-            ),
-            "similarity": round(results[number - 1]["similarity"], 3),
-        }
-        for number in cited
-    ]
+    claims = claims_by_source(answer, max_source)
+    mapping = {old: new for new, old in enumerate(cited, start=1)}
+    answer = renumber(answer, mapping, max_source)
+
+    citations = []
+    for old in cited:
+        result = results[old - 1]
+        highlights = highlights_for(
+            result["text"],
+            claims.get(old, []),
+            search_query,
+        )
+        citations.append(
+            {
+                "source": mapping[old],
+                "document_id": result["document_id"],
+                "document_name": result["document_name"],
+                "page": result["page"],
+                "chunk_id": str(result["chunk_id"]),
+                "snippet": (
+                    " … ".join(highlights)
+                    if highlights
+                    else best_snippet(result["text"], search_query)
+                ),
+                "highlights": highlights,
+                "similarity": round(result["similarity"], 3),
+            }
+        )
 
     return {
         "answer": answer,

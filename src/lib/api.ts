@@ -9,6 +9,11 @@ export const API_V1 = `${API_BASE_URL}/api/v1`
 export const WORKSPACE_URL = `${API_V1}/workspaces/${WORKSPACE_ID}`
 export const CONVERSATIONS_URL = `${WORKSPACE_URL}/conversations`
 
+/** The original uploaded file, served inline (used by the source viewer). */
+export function documentFileUrl(documentId: string) {
+  return `${API_V1}/documents/${encodeURIComponent(documentId)}/file`
+}
+
 export type Conversation = {
   id: string
   workspace_id: string

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/DivaSatriaa/Docentra/backend/internal/model"
@@ -24,21 +25,30 @@ func (r *MessageRepository) Create(
 	conversationID string,
 	role string,
 	content string,
+	citations json.RawMessage,
 ) (*model.Message, error) {
 	query := `
 		INSERT INTO messages (
 			conversation_id,
 			role,
-			content
+			content,
+			citations
 		)
-		VALUES ($1, $2, $3)
+		VALUES ($1, $2, $3, $4)
 		RETURNING
 			id,
 			conversation_id,
 			role,
 			content,
+			citations,
 			created_at
 	`
+
+	// A nil RawMessage must be stored as SQL NULL, not the JSON text "null".
+	var citationsParam any
+	if len(citations) > 0 {
+		citationsParam = string(citations)
+	}
 
 	var message model.Message
 
@@ -48,11 +58,13 @@ func (r *MessageRepository) Create(
 		conversationID,
 		role,
 		content,
+		citationsParam,
 	).Scan(
 		&message.ID,
 		&message.ConversationID,
 		&message.Role,
 		&message.Content,
+		&message.Citations,
 		&message.CreatedAt,
 	)
 
@@ -73,6 +85,7 @@ func (r *MessageRepository) ListByConversation(
 			conversation_id,
 			role,
 			content,
+			citations,
 			created_at
 		FROM messages
 		WHERE conversation_id = $1
@@ -99,6 +112,7 @@ func (r *MessageRepository) ListByConversation(
 			&message.ConversationID,
 			&message.Role,
 			&message.Content,
+			&message.Citations,
 			&message.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan message: %w", err)
@@ -127,6 +141,7 @@ func (r *MessageRepository) GetByID(
 			conversation_id,
 			role,
 			content,
+			citations,
 			created_at
 		FROM messages
 		WHERE id = $1
@@ -143,6 +158,7 @@ func (r *MessageRepository) GetByID(
 		&message.ConversationID,
 		&message.Role,
 		&message.Content,
+		&message.Citations,
 		&message.CreatedAt,
 	)
 

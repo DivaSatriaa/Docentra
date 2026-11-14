@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -49,6 +50,7 @@ func (s *MessageService) CreateUserMessage(
 		conversationID,
 		"user",
 		content,
+		nil,
 	)
 }
 
@@ -115,7 +117,7 @@ func (s *MessageService) Chat(
 		Question:    content,
 		WorkspaceID: conversation.WorkspaceID,
 		History:     aiHistory,
-		TopK:        5,
+		TopK:        8,
 		LLM:         llm,
 		DocumentIDs: documentIDs,
 	}
@@ -128,11 +130,20 @@ func (s *MessageService) Chat(
 		return nil, userMessage, err
 	}
 
+	var citations json.RawMessage
+	if len(aiResponse.Citations) > 0 {
+		citations, err = json.Marshal(aiResponse.Citations)
+		if err != nil {
+			return nil, userMessage, fmt.Errorf("encode citations: %w", err)
+		}
+	}
+
 	assistantMessage, err := s.repository.Create(
 		ctx,
 		conversationID,
 		"assistant",
 		aiResponse.Answer,
+		citations,
 	)
 	if err != nil {
 		return nil, userMessage, err

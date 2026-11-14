@@ -212,3 +212,51 @@ def hybrid_search_chunks(
 
     ranked = sorted(fused.values(), key=lambda item: item["score"], reverse=True)
     return ranked[:top_k]
+
+
+def scope_text_length(document_ids: list[str]) -> int:
+    """Total characters of all chunks in these (ready) documents."""
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(LENGTH(dc.content)), 0)
+                FROM document_chunks dc
+                JOIN documents d
+                    ON d.id = dc.document_id
+                WHERE d.processing_status = 'ready'
+                  AND d.id = ANY(%s)
+                """,
+                [document_ids],
+            )
+            return int(cursor.fetchone()[0])
+
+
+def document_chunks(query_embedding, document_ids: list[str]) -> list[dict]:
+    """Every chunk of these documents, in reading order, with its similarity."""
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    dc.id,
+                    dc.document_id,
+                    d.original_name,
+                    dc.page_number,
+                    dc.content,
+                    1 - (dc.embedding <=> %s::vector) AS similarity
+                FROM document_chunks dc
+                JOIN documents d
+                    ON d.id = dc.document_id
+                WHERE d.processing_status = 'ready'
+                  AND d.id = ANY(%s)
+                ORDER BY d.original_name, dc.chunk_index
+                """,
+                [query_embedding, document_ids],
+            )
+            rows = cursor.fetchall()
+
+    return [
+        {**_row_to_result(row), "keyword_rank": None, "score": 0.0}
+        for row in rows
+    ]
