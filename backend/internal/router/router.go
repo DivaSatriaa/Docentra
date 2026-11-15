@@ -202,6 +202,11 @@ func Setup(
 		)
 
 		conversations.POST(
+			"/:id/messages/stream",
+			messageHandler.CreateStream,
+		)
+
+		conversations.POST(
 			"/:id/title",
 			messageHandler.GenerateTitle,
 		)

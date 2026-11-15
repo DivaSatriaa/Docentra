@@ -40,6 +40,7 @@ seconds instead of taken on trust.
 ## Features
 
 - **Grounded answers with citations.** Every answer cites its sources per claim, with the document name, page and supporting snippet.
+- **Streaming answers.** Answers appear word by word as the model writes them; citations are verified and attached once the answer is complete.
 - **Source viewer.** Click a citation to open the original PDF, DOCX or text file beside the chat, scrolled to the cited page with the passage highlighted.
 - **Multi-format ingestion.** PDF, DOCX, PPTX, XLSX, CSV, TXT and Markdown are parsed, chunked and embedded automatically on upload.
 - **Hybrid search.** Retrieval combines pgvector semantic search with Postgres full-text search, merged by reciprocal rank fusion.

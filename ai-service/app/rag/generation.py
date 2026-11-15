@@ -1,15 +1,13 @@
 from app.rag.lang import language_instruction
-from app.rag.llm import generate
+from typing import Iterator
+
+from app.rag.llm import generate, generate_stream
 
 
-def generate_answer(
-    question: str,
-    context: str,
-    llm: dict | None = None,
-) -> str:
+def _build_prompt(question: str, context: str) -> str:
     language_rule = language_instruction(question)
 
-    prompt = f"""
+    return f"""
 You are Docentra, an AI assistant that answers questions
 based only on the provided document context.
 
@@ -43,4 +41,18 @@ USER QUESTION:
 ANSWER:
 """.strip()
 
-    return generate(prompt, llm)
+
+def generate_answer(
+    question: str,
+    context: str,
+    llm: dict | None = None,
+) -> str:
+    return generate(_build_prompt(question, context), llm)
+
+
+def generate_answer_stream(
+    question: str,
+    context: str,
+    llm: dict | None = None,
+) -> Iterator[str]:
+    return generate_stream(_build_prompt(question, context), llm)

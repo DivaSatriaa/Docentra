@@ -1,5 +1,7 @@
 import os
 import re
+from contextlib import closing
+from typing import Iterator
 
 from app.rag.citations import (
     highlights_for,
@@ -10,7 +12,7 @@ from app.rag.context import build_context
 from app.rag.doc_match import list_documents, match_documents
 from app.rag.embeddings import create_embeddings
 from app.rag.lang import not_found_message
-from app.rag.generation import generate_answer
+from app.rag.generation import generate_answer_stream
 from app.rag.query_rewriter import rewrite_query
 from app.rag.retriever import (
     document_chunks,
@@ -18,6 +20,7 @@ from app.rag.retriever import (
     scope_text_length,
 )
 from app.rag.snippet import best_snippet
+from app.rag.stream import hide_labels
 
 
 # Chunks below this cosine similarity are never used.
@@ -81,7 +84,7 @@ def _dominant_document(results: list[dict]) -> str | None:
     return document_id if count / len(results) >= DOMINANT_SHARE else None
 
 
-def chat(
+def chat_stream(
     question: str,
     *,
     workspace_id: str,
@@ -90,7 +93,7 @@ def chat(
     collection_id: str | None = None,
     top_k: int = 5,
     llm: dict | None = None,
-) -> dict:
+) -> Iterator[tuple[str, dict]]:
     question = question.strip()
 
     if not question:
@@ -169,12 +172,13 @@ def chat(
         document_ids = None
 
     if not results:
-        return {
+        yield "done", {
             "answer": not_found_message(question),
             "citations": [],
             "search_query": search_query,
             "scope": scope,
         }
+        return
 
     # Read whole documents when they are small enough: the scoped ones, or
     # the one document most hits came from.
@@ -189,11 +193,23 @@ def chat(
 
     context = build_context(results)
 
-    answer = generate_answer(
-        question,
-        context,
-        llm,
-    )
+    # Stream the text with source labels hidden; the verified answer is
+    # computed from the raw text once it is complete.
+    raw: list[str] = []
+
+    def raw_deltas():
+        # closing(): if the consumer stops early, the provider connection is
+        # closed right away instead of whenever the garbage collector runs.
+        with closing(generate_answer_stream(question, context, llm)) as pieces:
+            for piece in pieces:
+                raw.append(piece)
+                yield piece
+
+    with closing(raw_deltas()) as source, closing(hide_labels(source)) as visible:
+        for text in visible:
+            yield "delta", {"text": text}
+
+    answer = "".join(raw).strip()
 
     max_source = len(results)
     chunk_texts = [result["text"] for result in results]
@@ -239,9 +255,36 @@ def chat(
             }
         )
 
-    return {
+    yield "done", {
         "answer": answer,
         "citations": citations,
         "search_query": search_query,
         "scope": scope,
     }
+
+
+def chat(
+    question: str,
+    *,
+    workspace_id: str,
+    history: list[dict] | None = None,
+    document_ids: list[str] | None = None,
+    collection_id: str | None = None,
+    top_k: int = 5,
+    llm: dict | None = None,
+) -> dict:
+    result: dict = {}
+
+    for event, payload in chat_stream(
+        question,
+        workspace_id=workspace_id,
+        history=history,
+        document_ids=document_ids,
+        collection_id=collection_id,
+        top_k=top_k,
+        llm=llm,
+    ):
+        if event == "done":
+            result = payload
+
+    return result

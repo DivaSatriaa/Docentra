@@ -35,6 +35,7 @@ import Sparkle from "../ui/Sparkle"
 import { AmbientGlow } from "../ui/Page"
 import { useToast } from "../ui/Toast"
 import { API_V1 } from "../../lib/api"
+import { streamMessage, type Citation } from "../../lib/chatStream"
 import {
   formatFileSize,
   type WorkspaceDocument,
@@ -75,17 +76,6 @@ const PROMPTS = [
   },
 ]
 
-type Citation = {
-  source?: number
-  document_id: string
-  document_name: string
-  page: number
-  chunk_id: string
-  snippet: string
-  /** Exact passages the answer relied on, highlighted in the viewer. */
-  highlights?: string[]
-}
-
 type Message = {
   id: string
   role: "user" | "assistant"
@@ -100,13 +90,6 @@ type ApiMessage = {
   content: string
   citations?: Citation[] | null
   created_at: string
-}
-
-type ApiResponse = {
-  scope?: string[]
-  answer: string
-  search_query: string
-  citations: Citation[]
 }
 
 interface MainChatProps {
@@ -152,11 +135,21 @@ export default function MainChat({
   const [question, setQuestion] = useState("")
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [streamingId, setStreamingId] = useState<string | null>(null)
   const [isLoadingHistory, setIsLoadingHistory] = useState(true)
   const [error, setError] = useState("")
   const [failedQuestion, setFailedQuestion] = useState<string | null>(null)
   const [activeSource, setActiveSource] = useState<ViewerSource | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  // Cancel any in-flight answer when the conversation changes or this unmounts.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort()
+      abortRef.current = null
+    }
+  }, [conversationId])
 
   const openSource = (citation: Citation, n: number) =>
     setActiveSource({
@@ -224,9 +217,15 @@ export default function MainChat({
     setFailedQuestion(null)
     const isFirstExchange = messages.length === 0
 
+    const controller = new AbortController()
+    abortRef.current = controller
+    const userId = crypto.randomUUID()
+    // Set on the first delta; keeps the same React key through to "done".
+    let assistantId: string | null = null
+
     setMessages((current) => [
       ...current,
-      { id: crypto.randomUUID(), role: "user", content: trimmed },
+      { id: userId, role: "user", content: trimmed },
     ])
     setQuestion("")
     setIsLoading(true)
@@ -234,46 +233,90 @@ export default function MainChat({
     onPromptSent?.()
 
     try {
-      const response = await fetch(
-        `${API_V1}/conversations/${conversationId}/messages`,
+      await streamMessage(
+        `${API_V1}/conversations/${conversationId}/messages/stream`,
         {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            content: trimmed,
-            model: toModelPayload(modelSettings),
-            document_ids: selectedDocIds.length > 0 ? selectedDocIds : undefined,
-          }),
+          content: trimmed,
+          model: toModelPayload(modelSettings),
+          document_ids: selectedDocIds.length > 0 ? selectedDocIds : undefined,
         },
+        {
+          onDelta: (delta) => {
+            if (controller.signal.aborted) return
+            if (assistantId === null) {
+              const id = crypto.randomUUID()
+              assistantId = id
+              setMessages((current) => [
+                ...current,
+                { id, role: "assistant", content: delta },
+              ])
+              setStreamingId(id)
+            } else {
+              const id = assistantId
+              setMessages((current) =>
+                current.map((m) =>
+                  m.id === id ? { ...m, content: m.content + delta } : m,
+                ),
+              )
+            }
+          },
+          onDone: (payload) => {
+            if (controller.signal.aborted) return
+            if (assistantId === null) {
+              const id = crypto.randomUUID()
+              assistantId = id
+              setMessages((current) => [
+                ...current,
+                {
+                  id,
+                  role: "assistant",
+                  content: payload.answer,
+                  citations: payload.citations,
+                  scope: payload.scope,
+                },
+              ])
+            } else {
+              const id = assistantId
+              setMessages((current) =>
+                current.map((m) =>
+                  m.id === id
+                    ? {
+                        ...m,
+                        content: payload.answer,
+                        citations: payload.citations,
+                        scope: payload.scope,
+                      }
+                    : m,
+                ),
+              )
+            }
+            setStreamingId(null)
+          },
+        },
+        controller.signal,
       )
 
-      if (!response.ok) {
-        const body = await response.text()
-        throw new Error(body || `Request failed with ${response.status}`)
-      }
-
-      const data: ApiResponse = await response.json()
-
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: data.answer,
-          citations: data.citations,
-          scope: data.scope,
-        },
-      ])
-
+      if (controller.signal.aborted) return
       if (isFirstExchange) void renameConversation()
     } catch (requestError) {
+      if (controller.signal.aborted) return
+      if (requestError instanceof DOMException && requestError.name === "AbortError") {
+        return
+      }
       console.error("Failed to send message:", requestError)
-      // Take the unanswered question back out so a retry doesn't duplicate it.
-      setMessages((current) => current.slice(0, -1))
+      // Take the unanswered question and any partial answer back out so a retry doesn't duplicate it.
+      const partialId = assistantId
+      setMessages((current) =>
+        current.filter((m) => m.id !== userId && m.id !== partialId),
+      )
       setFailedQuestion(trimmed)
       setError("Docentra AI couldn't answer. Check that the AI service is running.")
     } finally {
-      setIsLoading(false)
+      if (abortRef.current === controller) {
+        abortRef.current = null
+        setIsLoading(false)
+        setStreamingId(null)
+      }
     }
   }
 
@@ -394,6 +437,7 @@ export default function MainChat({
         <ConversationView
           messages={messages}
           isLoading={isLoading}
+          isWaiting={isLoading && streamingId === null}
           scopeCount={selectedDocIds.length}
           composer={composer}
           errorBanner={errorBanner}
@@ -520,6 +564,7 @@ export default function MainChat({
 function ConversationView({
   messages,
   isLoading,
+  isWaiting,
   scopeCount,
   composer,
   errorBanner,
@@ -528,6 +573,8 @@ function ConversationView({
 }: {
   messages: Message[]
   isLoading: boolean
+  /** True while a request is in flight and no answer text has arrived yet. */
+  isWaiting: boolean
   scopeCount: number
   composer: ReactNode
   errorBanner: ReactNode
@@ -536,15 +583,33 @@ function ConversationView({
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Keep the newest message in view.
+  // Follow a growing answer, but only if the reader hasn't scrolled away.
+  const nearBottomRef = useRef(true)
+
+  // Keep the newest message in view. A message the user just sent always
+  // scrolls into view; otherwise only follow when already near the bottom.
   useLayoutEffect(() => {
     const el = scrollRef.current
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+    if (!el) return
+    if (messages[messages.length - 1]?.role === "user") nearBottomRef.current = true
+    if (nearBottomRef.current) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length, isLoading])
+
+  const lastContentLength = messages[messages.length - 1]?.content.length ?? 0
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (el && nearBottomRef.current) el.scrollTo({ top: el.scrollHeight, behavior: "auto" })
+  }, [lastContentLength])
+
+  function handleScroll() {
+    const el = scrollRef.current
+    if (el) nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+  }
 
   return (
     <div className="relative z-10 flex min-h-0 flex-1 flex-col">
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-8">
+      <div ref={scrollRef} onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-8">
         <div className="mx-auto w-full max-w-[780px] space-y-7 py-8">
           {messages.map((message) =>
             message.role === "user" ? (
@@ -559,7 +624,7 @@ function ConversationView({
             ),
           )}
 
-          {isLoading && (
+          {isWaiting && (
             <div className="flex animate-rise-in gap-3.5">
               <AssistantAvatar />
               <div className="flex items-center gap-3 pt-1.5 text-[13px] text-white/40">

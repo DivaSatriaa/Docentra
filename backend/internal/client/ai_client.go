@@ -1,10 +1,12 @@
 package client
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -180,6 +182,122 @@ func (c *AIClient) Chat(
 	}
 
 	return &result, nil
+}
+
+// StreamEvent is one server-sent event from the AI service.
+type StreamEvent struct {
+	Event string
+	Data  json.RawMessage
+}
+
+// StreamDone is the payload of the final "done" event.
+type StreamDone struct {
+	ChatResponse
+	MessageID string `json:"message_id,omitempty"`
+}
+
+// readSSE parses server-sent event frames from r and calls onEvent for each.
+// Lines are read with bufio.Reader so arbitrarily large data lines are kept.
+func readSSE(r io.Reader, onEvent func(StreamEvent) error) error {
+	reader := bufio.NewReader(r)
+
+	var (
+		event   string
+		data    []string
+		hasData bool
+	)
+
+	dispatch := func() error {
+		defer func() {
+			event = ""
+			data = nil
+			hasData = false
+		}()
+		if !hasData {
+			return nil
+		}
+		return onEvent(StreamEvent{
+			Event: event,
+			Data:  json.RawMessage(strings.Join(data, "\n")),
+		})
+	}
+
+	for {
+		line, readErr := reader.ReadString('\n')
+		if readErr != nil && readErr != io.EOF {
+			return readErr
+		}
+
+		if line != "" || readErr == nil {
+			line = strings.TrimSuffix(line, "\n")
+			line = strings.TrimSuffix(line, "\r")
+
+			switch {
+			case line == "":
+				if err := dispatch(); err != nil {
+					return err
+				}
+			case strings.HasPrefix(line, ":"):
+				// comment / keepalive
+			default:
+				field, value, _ := strings.Cut(line, ":")
+				value = strings.TrimPrefix(value, " ")
+				switch field {
+				case "event":
+					event = value
+				case "data":
+					data = append(data, value)
+					hasData = true
+				}
+			}
+		}
+
+		if readErr == io.EOF {
+			return dispatch()
+		}
+	}
+}
+
+// ChatStream posts the question to the AI service and calls onEvent for every
+// server-sent event. Cancelling ctx aborts the upstream request.
+func (c *AIClient) ChatStream(
+	ctx context.Context,
+	request ChatRequest,
+	onEvent func(StreamEvent) error,
+) error {
+	if request.TopK <= 0 {
+		request.TopK = 5
+	}
+
+	body, err := json.Marshal(request)
+	if err != nil {
+		return fmt.Errorf("marshal chat request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.baseURL+"/internal/chat/stream",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		return fmt.Errorf("create chat stream request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("call AI chat service: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("AI chat service returned HTTP %d", resp.StatusCode)
+	}
+
+	return readSSE(resp.Body, onEvent)
 }
 
 type listModelsRequest struct {

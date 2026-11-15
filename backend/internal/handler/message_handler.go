@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"fmt"
+	"io"
+	"log"
 	"net/http"
 
 	"github.com/DivaSatriaa/Docentra/backend/internal/client"
@@ -63,6 +66,76 @@ func (h *MessageHandler) Create(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+// writeSSE writes one server-sent event frame and flushes it. data must be
+// single-line JSON.
+func writeSSE(w io.Writer, flusher http.Flusher, event string, data []byte) error {
+	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data); err != nil {
+		return err
+	}
+
+	if flusher != nil {
+		flusher.Flush()
+	}
+
+	return nil
+}
+
+// CreateStream answers a message as a server-sent event stream.
+func (h *MessageHandler) CreateStream(c *gin.Context) {
+	var req createMessageRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid request body",
+		})
+		return
+	}
+
+	started := false
+
+	emit := func(event client.StreamEvent) error {
+		if !started {
+			started = true
+			header := c.Writer.Header()
+			header.Set("Content-Type", "text/event-stream")
+			header.Set("Cache-Control", "no-cache")
+			header.Set("Connection", "keep-alive")
+			header.Set("X-Accel-Buffering", "no")
+			c.Status(http.StatusOK)
+		}
+
+		return writeSSE(c.Writer, c.Writer, event.Event, event.Data)
+	}
+
+	err := h.service.ChatStream(
+		c.Request.Context(),
+		c.Param("id"),
+		req.Content,
+		req.Model,
+		req.DocumentIDs,
+		emit,
+	)
+	if err == nil {
+		return
+	}
+
+	if started {
+		log.Printf("chat stream failed after start (conversation %s): %v", c.Param("id"), err)
+		return
+	}
+
+	if err.Error() == "conversation not found" {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "conversation not found",
+		})
+		return
+	}
+
+	c.JSON(http.StatusInternalServerError, gin.H{
+		"error": err.Error(),
+	})
 }
 
 func (h *MessageHandler) List(c *gin.Context) {

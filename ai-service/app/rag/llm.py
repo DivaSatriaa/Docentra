@@ -6,6 +6,7 @@
 When omitted, the local Ollama model from the environment is used.
 """
 
+import json
 import os
 
 import requests
@@ -62,19 +63,23 @@ def _raise_for_status(response: requests.Response) -> None:
     raise RuntimeError(f"LLM provider error {response.status_code}: {detail}")
 
 
-def generate(prompt: str, llm: dict | None = None) -> str:
+def _resolve(llm: dict | None) -> tuple[str, str, str, str]:
+    """Validate `llm` and return (kind, model, api_key, base).
+
+    kind is "ollama", "anthropic" or "openai" (any OpenAI-compatible API).
+    """
     llm = llm or {}
     provider = (llm.get("provider") or "ollama").lower()
     model = (llm.get("model") or "").strip()
     api_key = (llm.get("api_key") or "").strip()
 
     if provider == "ollama":
-        return _ollama(prompt, model or OLLAMA_MODEL)
+        return "ollama", model or OLLAMA_MODEL, "", OLLAMA_URL
 
     if provider == CUSTOM_PROVIDER:
         if not model:
             raise ValueError("model is required")
-        return _openai_compatible(prompt, model, api_key, _custom_base(llm))
+        return "openai", model, api_key, _custom_base(llm)
 
     if provider not in API_PROVIDERS:
         raise ValueError(f"unknown provider: {provider}")
@@ -86,10 +91,155 @@ def generate(prompt: str, llm: dict | None = None) -> str:
         raise ValueError("model is required")
 
     if provider == "anthropic":
-        return _anthropic(prompt, model, api_key)
+        return "anthropic", model, api_key, ANTHROPIC_BASE
 
     base = OPENAI_BASE if provider == "openai" else GEMINI_BASE
+    return "openai", model, api_key, base
+
+
+def generate(prompt: str, llm: dict | None = None) -> str:
+    kind, model, api_key, base = _resolve(llm)
+
+    if kind == "ollama":
+        return _ollama(prompt, model)
+
+    if kind == "anthropic":
+        return _anthropic(prompt, model, api_key)
+
     return _openai_compatible(prompt, model, api_key, base)
+
+
+def _sse_data(line: str) -> str | None:
+    """The payload of an SSE `data:` line, or None for any other line."""
+    if not line.startswith("data:"):
+        return None
+    return line[5:].strip()
+
+
+def _error_message(error) -> str:
+    if isinstance(error, dict):
+        error = error.get("message", error)
+    return str(error)
+
+
+def _ollama_deltas(lines):
+    for line in lines:
+        if not line or not line.strip():
+            continue
+
+        event = json.loads(line)
+
+        if event.get("error"):
+            raise RuntimeError(f"LLM provider error: {_error_message(event['error'])}")
+
+        text = event.get("response")
+        if text:
+            yield text
+
+        if event.get("done"):
+            return True
+
+
+def _openai_deltas(lines):
+    for line in lines:
+        data = _sse_data(line)
+        if not data:
+            continue
+
+        if data == "[DONE]":
+            return True
+
+        event = json.loads(data)
+
+        if event.get("error"):
+            raise RuntimeError(f"LLM provider error: {_error_message(event['error'])}")
+
+        finished = False
+        for choice in event.get("choices") or []:
+            text = (choice.get("delta") or {}).get("content")
+            if text:
+                yield text
+            if choice.get("finish_reason"):
+                finished = True
+
+        # Some servers end after the final finish_reason without [DONE].
+        if finished:
+            return True
+
+
+def _anthropic_deltas(lines):
+    for line in lines:
+        data = _sse_data(line)
+        if not data:
+            continue
+
+        event = json.loads(data)
+        kind = event.get("type")
+
+        if kind == "error":
+            raise RuntimeError(f"LLM provider error: {_error_message(event.get('error'))}")
+
+        if kind == "content_block_delta":
+            delta = event.get("delta") or {}
+            if delta.get("type") == "text_delta" and delta.get("text"):
+                yield delta["text"]
+        elif kind == "message_stop":
+            return True
+
+
+def generate_stream(prompt: str, llm: dict | None = None):
+    """Yield the answer as text deltas. Validation errors raise on first use."""
+    kind, model, api_key, base = _resolve(llm)
+
+    if kind == "ollama":
+        request = {
+            "url": f"{base}/api/generate",
+            "json": {
+                "model": model,
+                "prompt": prompt,
+                "stream": True,
+                "options": {"num_ctx": _ollama_num_ctx(prompt)},
+            },
+            "timeout": OLLAMA_TIMEOUT,
+        }
+        parse = _ollama_deltas
+    elif kind == "anthropic":
+        request = {
+            "url": f"{base}/messages",
+            "headers": {"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION},
+            "json": {
+                "model": model,
+                "max_tokens": 2048,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": True,
+            },
+            "timeout": 120,
+        }
+        parse = _anthropic_deltas
+    else:
+        request = {
+            "url": f"{base}/chat/completions",
+            "headers": {"Authorization": f"Bearer {api_key}"} if api_key else {},
+            "json": {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": True,
+            },
+            "timeout": 120,
+        }
+        parse = _openai_deltas
+
+    # The with-block closes the connection when the consumer stops early.
+    with requests.post(stream=True, **request) as response:
+        _raise_for_status(response)
+        # Streams are UTF-8; without this requests may default to latin-1/bytes.
+        response.encoding = "utf-8"
+        # Parsers return True once they see the provider's terminal marker.
+        complete = yield from parse(response.iter_lines(decode_unicode=True))
+
+    # A dropped connection must never look like a finished answer.
+    if not complete:
+        raise RuntimeError("stream ended unexpectedly")
 
 
 def _ollama_num_ctx(prompt: str) -> int:
