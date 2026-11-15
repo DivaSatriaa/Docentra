@@ -74,11 +74,11 @@ export default function CollectionsPage() {
         {visible.map((collection) => (
           <div
             key={collection.name}
-            className="group rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5 transition duration-200 hover:border-brand-500/35 hover:bg-white/[0.035]"
+            className="group rounded-2xl border border-white/[0.07] bg-white/[0.02] surface-card p-5 transition duration-200 hover:border-brand-500/35 hover:bg-white/[0.035]"
           >
             <div className="flex items-start justify-between gap-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/[0.12] text-brand-300">
-                <FolderOpen size={19} strokeWidth={1.7} />
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl icon-tile">
+                <FolderOpen size={19} />
               </div>
               <span className="rounded-md bg-white/[0.05] px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-wide text-white/35">
                 Example

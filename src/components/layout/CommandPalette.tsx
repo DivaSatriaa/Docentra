@@ -117,7 +117,7 @@ export default function CommandPalette({
         role="dialog"
         aria-modal="true"
         aria-label="Search"
-        className="w-full max-w-[600px] animate-pop-in overflow-hidden rounded-2xl border border-white/[0.09] bg-ink-850 shadow-2xl shadow-black/60"
+        className="w-full max-w-[600px] animate-pop-in overflow-hidden rounded-2xl border border-white/[0.09] bg-ink-850 surface-pop"
         onKeyDown={(event) => {
           if (event.key === "Escape") onClose()
           else if (event.key === "ArrowDown") {

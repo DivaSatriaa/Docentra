@@ -85,9 +85,9 @@ export default function UploadButton({
         className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] text-white/55 transition hover:bg-white/[0.06] hover:text-white disabled:opacity-40"
       >
         {busy ? (
-          <Loader2 size={14} strokeWidth={1.8} className="animate-spin" />
+          <Loader2 size={14} className="animate-spin" />
         ) : (
-          <Upload size={14} strokeWidth={1.8} />
+          <Upload size={14} />
         )}
         {phase.name === "uploading"
           ? "Uploading..."

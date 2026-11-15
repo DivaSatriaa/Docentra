@@ -123,6 +123,8 @@ interface MainChatProps {
   /** Called after the chat gets an auto-generated title. */
   onTitleChanged?: () => void
   onMessageCountChange?: (count: number) => void
+  /** Called each time a prompt is sent, whatever triggered the send. */
+  onPromptSent?: () => void
 }
 
 function greeting() {
@@ -145,6 +147,7 @@ export default function MainChat({
   onDocumentsChanged,
   onTitleChanged,
   onMessageCountChange,
+  onPromptSent,
 }: MainChatProps) {
   const [question, setQuestion] = useState("")
   const [messages, setMessages] = useState<Message[]>([])
@@ -228,6 +231,7 @@ export default function MainChat({
     setQuestion("")
     setIsLoading(true)
     onMessageCountChange?.(messages.length + 1)
+    onPromptSent?.()
 
     try {
       const response = await fetch(
@@ -343,7 +347,7 @@ export default function MainChat({
             title="Web search is coming soon"
             className="hidden h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] text-white/30 md:flex"
           >
-            <Globe2 size={14} strokeWidth={1.8} />
+            <Globe2 size={14} />
             Web Search
             <span className="rounded bg-white/[0.06] px-1 py-px text-[9.5px] font-medium uppercase tracking-wide text-white/35">
               Soon
@@ -403,7 +407,7 @@ export default function MainChat({
               <div className="flex items-center justify-center gap-3">
                 <Sparkle size={26} className="spark-glow text-spark" />
                 <h2 className="font-display text-[30px] font-medium tracking-[-0.02em] text-paper sm:text-[38px]">
-                  {greeting()}, Divas.
+                  {greeting()}, <span className="text-brand-gradient">Divas</span>.
                 </h2>
               </div>
               <p className="mt-2 text-[15px] text-white/45">
@@ -415,7 +419,7 @@ export default function MainChat({
             {errorBanner && <div className="mt-3">{errorBanner}</div>}
 
             <section className="mt-9">
-              <h3 className="mb-3 text-[13px] font-medium text-white/60">
+              <h3 className="mb-3 text-[12px] font-medium text-white/45">
                 Suggested prompts
               </h3>
               <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
@@ -427,10 +431,10 @@ export default function MainChat({
                       setQuestion(text)
                       inputRef.current?.focus()
                     }}
-                    className="group flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3 text-left transition duration-200 hover:-translate-y-px hover:border-brand-500/40 hover:bg-brand-500/[0.06]"
+                    className="group flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] surface-card p-3 text-left transition duration-200 hover:-translate-y-0.5 hover:border-brand-400/40 hover:bg-brand-500/[0.07] hover:shadow-[0_14px_30px_-18px_rgba(142,58,89,0.9)]"
                   >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/[0.12] text-brand-300 transition group-hover:bg-brand-500/25">
-                      <Icon size={16} strokeWidth={1.8} />
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg icon-tile transition group-hover:brightness-125">
+                      <Icon size={16} />
                     </span>
                     <span className="min-w-0 text-[12.5px] leading-[17px]">
                       <span className="block font-medium text-white/85">{label}</span>
@@ -443,7 +447,7 @@ export default function MainChat({
 
             <section className="mt-9">
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-[13px] font-medium text-white/60">Recent documents</h3>
+                <h3 className="text-[12px] font-medium text-white/45">Recent documents</h3>
                 <button
                   type="button"
                   onClick={onOpenDocuments}
@@ -472,12 +476,12 @@ export default function MainChat({
                         className={[
                           "group relative flex items-center gap-3 rounded-xl border p-3 text-left transition duration-200",
                           active
-                            ? "border-brand-500/60 bg-brand-500/[0.08]"
-                            : "border-white/[0.07] bg-white/[0.02] hover:border-white/[0.14] hover:bg-white/[0.04]",
+                            ? "brand-wash border-brand-400/50"
+                            : "surface-card border-white/[0.07] bg-white/[0.02] hover:-translate-y-0.5 hover:border-white/[0.15] hover:bg-white/[0.04]",
                         ].join(" ")}
                       >
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/[0.04]">
-                          <FileTypeIcon type={document.extension ?? ""} size={26} />
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/[0.035]">
+                          <FileTypeIcon type={document.extension ?? ""} size={28} />
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[12.5px] font-medium text-white/85">
@@ -489,7 +493,7 @@ export default function MainChat({
                           </span>
                         </span>
                         {active && (
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white">
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-400 to-plum text-white">
                             <Check size={12} strokeWidth={2.5} />
                           </span>
                         )}
@@ -581,7 +585,7 @@ function ConversationView({
 function UserMessage({ content }: { content: string }) {
   return (
     <div className="flex animate-rise-in justify-end">
-      <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md border border-brand-500/30 bg-gradient-to-br from-brand-500/45 to-plum/50 px-4 py-2.5 text-[14px] leading-6 text-white sm:max-w-[75%]">
+      <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md border border-brand-300/20 bg-gradient-to-br from-brand-500/55 via-brand-600/45 to-plum/60 px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_10px_24px_-16px_rgba(142,58,89,0.9)] text-[14px] leading-6 text-white sm:max-w-[75%]">
         {content}
       </div>
     </div>
@@ -590,7 +594,7 @@ function UserMessage({ content }: { content: string }) {
 
 function AssistantAvatar() {
   return (
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-ink-800">
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-ink-800 surface-card">
       <BrandMark size={20} />
     </div>
   )
@@ -726,8 +730,8 @@ function AssistantMessage({
                     "w-full rounded-xl border px-3 py-2.5 text-left transition duration-300",
                     highlighted === n ||
                     activeSourceKey === `${citation.document_id}:${n}`
-                      ? "border-brand-400/70 bg-brand-500/[0.12]"
-                      : "border-white/[0.07] bg-white/[0.02] hover:border-white/[0.16] hover:bg-white/[0.04]",
+                      ? "brand-wash border-brand-400/60"
+                      : "surface-card border-white/[0.07] bg-white/[0.02] hover:border-white/[0.16] hover:bg-white/[0.04]",
                   ].join(" ")}
                 >
                   <div className="flex items-center gap-2">
@@ -801,7 +805,7 @@ function Composer({
   return (
     <div>
       <section
-        className="rounded-[20px] border border-white/[0.1] bg-ink-800/90 shadow-[0_24px_70px_-20px_rgba(0,0,0,0.6)] backdrop-blur-md transition focus-within:border-brand-500/45 focus-within:shadow-[0_0_0_4px_rgba(142,58,89,0.12),0_24px_70px_-20px_rgba(0,0,0,0.6)]"
+        className="rounded-[20px] border border-white/[0.1] bg-ink-800/90 bg-gradient-to-b from-white/[0.035] to-transparent shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_24px_70px_-20px_rgba(0,0,0,0.65)] backdrop-blur-md transition duration-200 focus-within:border-brand-400/50 focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_0_4px_rgba(142,58,89,0.14),0_24px_70px_-20px_rgba(0,0,0,0.65),0_18px_60px_-24px_rgba(142,58,89,0.55)]"
         onClick={(event) => {
           if (event.target === event.currentTarget) inputRef.current?.focus()
         }}
@@ -814,7 +818,7 @@ function Composer({
               return (
                 <span
                   key={doc.id}
-                  className="flex max-w-[240px] animate-pop-in items-center gap-1.5 rounded-lg border border-brand-500/35 bg-brand-500/[0.1] py-1 pl-2 pr-1 text-[12px] text-white/80"
+                  className="flex max-w-[240px] animate-pop-in items-center gap-1.5 rounded-lg brand-wash border border-brand-400/30 py-1 pl-2 pr-1 text-[12px] text-white/80"
                 >
                   <FileTypeIcon type={doc.extension ?? ""} size={14} />
                   <span className="truncate">{name}</span>
@@ -862,7 +866,7 @@ function Composer({
             disabled={!canSend}
             aria-label="Send message"
             title="Send (Enter)"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white shadow-[0_8px_20px_-6px_rgba(142,58,89,0.7)] transition hover:bg-brand-400 active:scale-95 disabled:bg-white/[0.07] disabled:text-white/30 disabled:shadow-none"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl brand-fill active:scale-95"
           >
             <ArrowUp size={18} strokeWidth={2.2} />
           </button>

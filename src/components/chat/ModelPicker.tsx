@@ -121,16 +121,16 @@ export default function ModelPicker({
         className="flex h-8 max-w-[200px] items-center gap-1.5 rounded-lg px-2.5 text-[12px] text-white/55 transition hover:bg-white/[0.06] hover:text-white disabled:opacity-40"
       >
         {selected.mode === "api" && selected.model ? (
-          <Cloud size={14} strokeWidth={1.8} className="shrink-0" />
+          <Cloud size={14} className="shrink-0" />
         ) : (
-          <Cpu size={14} strokeWidth={1.8} className="shrink-0" />
+          <Cpu size={14} className="shrink-0" />
         )}
         <span className="truncate">{label}</span>
-        <ChevronDown size={13} strokeWidth={1.8} className="shrink-0" />
+        <ChevronDown size={13} className="shrink-0" />
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 z-30 mb-2 w-[300px] animate-pop-in rounded-xl border border-white/[0.09] bg-ink-850 p-2 shadow-2xl shadow-black/50">
+        <div className="absolute bottom-full left-0 z-30 mb-2 w-[300px] animate-pop-in rounded-xl border border-white/[0.09] bg-ink-850 p-2 surface-pop">
           <div className="mb-2 grid grid-cols-2 gap-1 rounded-lg bg-white/[0.04] p-1">
             {(["local", "api"] as const).map((value) => (
               <button
@@ -145,9 +145,9 @@ export default function ModelPicker({
                 ].join(" ")}
               >
                 {value === "local" ? (
-                  <Cpu size={13} strokeWidth={1.8} />
+                  <Cpu size={13} />
                 ) : (
-                  <Cloud size={13} strokeWidth={1.8} />
+                  <Cloud size={13} />
                 )}
                 {value === "local" ? "Local" : "API"}
               </button>
@@ -186,9 +186,9 @@ export default function ModelPicker({
                     setOpen(false)
                     onOpenSettings()
                   }}
-                  className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3.5 py-2 text-[12px] font-medium text-white transition hover:bg-brand-400"
+                  className="inline-flex items-center gap-2 rounded-lg brand-fill px-3.5 py-2 text-[12px] font-medium"
                 >
-                  <KeyRound size={13} strokeWidth={1.8} />
+                  <KeyRound size={13} />
                   Open Settings
                 </button>
               </div>

@@ -2,10 +2,9 @@ import os
 import re
 
 from app.rag.citations import (
-    cited_sources,
-    claims_by_source,
     highlights_for,
     renumber,
+    resolve_citations,
 )
 from app.rag.context import build_context
 from app.rag.doc_match import list_documents, match_documents
@@ -68,10 +67,6 @@ _CANNOT_ANSWER = (
     "tidak ada informasi yang cukup",
     "informasi tidak cukup",
 )
-
-# When the model cites nothing, fall back to this many top sources.
-FALLBACK_CITATIONS = 2
-
 
 def is_list_question(text: str) -> bool:
     return bool(_LIST_INTENT.search(text))
@@ -201,19 +196,20 @@ def chat(
     )
 
     max_source = len(results)
-    cited = cited_sources(answer, max_source)
+    chunk_texts = [result["text"] for result in results]
 
     if any(phrase in answer.lower() for phrase in _CANNOT_ANSWER):
-        cited = []
-    elif not cited:
-        by_relevance = sorted(
-            range(1, max_source + 1),
-            key=lambda n: results[n - 1]["similarity"],
-            reverse=True,
+        cited, claims = [], {}
+    else:
+        # Don't take the model's source labels on trust: check each one
+        # against the chunk it points at.
+        resolved = resolve_citations(
+            answer,
+            chunk_texts,
+            [result["similarity"] for result in results],
         )
-        cited = by_relevance[:FALLBACK_CITATIONS]
+        answer, cited, claims = resolved.answer, resolved.cited, resolved.claims
 
-    claims = claims_by_source(answer, max_source)
     mapping = {old: new for new, old in enumerate(cited, start=1)}
     answer = renumber(answer, mapping, max_source)
 
@@ -224,6 +220,7 @@ def chat(
             result["text"],
             claims.get(old, []),
             search_query,
+            chunk_texts,
         )
         citations.append(
             {

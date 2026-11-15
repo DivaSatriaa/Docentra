@@ -1,4 +1,13 @@
-import { Eye, EyeOff, KeyRound, Plus, Server, ShieldCheck, Trash2 } from "lucide-react"
+import {
+  Eye,
+  EyeOff,
+  KeyRound,
+  PanelLeft,
+  Plus,
+  Server,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react"
 import { useState } from "react"
 
 import { PageContainer, PageHeader } from "../components/ui/Page"
@@ -17,6 +26,8 @@ interface SettingsPageProps {
   onSetKey: (provider: ApiProvider, key: string) => void
   onSaveCustom: (provider: Omit<CustomProvider, "id">) => void
   onRemoveCustom: (id: string) => void
+  autoHideSidebar: boolean
+  onSetAutoHideSidebar: (enabled: boolean) => void
 }
 
 export default function SettingsPage({
@@ -25,6 +36,8 @@ export default function SettingsPage({
   onSetKey,
   onSaveCustom,
   onRemoveCustom,
+  autoHideSidebar,
+  onSetAutoHideSidebar,
 }: SettingsPageProps) {
   return (
     <PageContainer width="max-w-[760px]">
@@ -33,7 +46,35 @@ export default function SettingsPage({
         description="Connect AI providers. Local models (Ollama) work without a key."
       />
 
-      <div className="mt-8 flex items-start gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 text-[12.5px] leading-6 text-white/50">
+        <section className="mt-8">
+          <SectionTitle
+            icon={<PanelLeft size={15} />}
+            title="Interface"
+            description="How the workspace behaves while you chat."
+          />
+          <label className="surface-card flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 transition hover:border-white/[0.12]">
+            <span className="min-w-0">
+              <span className="block text-[13px] text-white">Hide sidebar after sending</span>
+              <span className="mt-0.5 block text-[12px] leading-5 text-white/40">
+                The sidebar slides away when you send a prompt, so the answer gets the
+                full width. Bring it back with the button in the top bar or Ctrl/⌘ + B.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={autoHideSidebar}
+              onChange={(event) => onSetAutoHideSidebar(event.target.checked)}
+              className="peer sr-only"
+            />
+            <span
+              aria-hidden="true"
+              className="relative h-6 w-10 shrink-0 rounded-full bg-white/[0.1] transition-colors duration-200 after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white/80 after:shadow after:transition-transform after:duration-200 peer-checked:bg-brand-500 peer-checked:after:translate-x-4 peer-checked:after:bg-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand-300/70"
+            />
+          </label>
+        </section>
+
+      <div className="mt-10 flex items-start gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] surface-card px-4 py-3 text-[12.5px] leading-6 text-white/50">
         <ShieldCheck size={16} className="mt-1 shrink-0 text-emerald-300/80" />
         <p>
           Keys are stored only in this browser and sent with your requests through the
@@ -44,7 +85,7 @@ export default function SettingsPage({
 
         <section className="mt-8">
           <SectionTitle
-            icon={<KeyRound size={15} strokeWidth={1.8} />}
+            icon={<KeyRound size={15} />}
             title="API keys"
             description="Built-in providers for the model picker."
           />
@@ -65,7 +106,7 @@ export default function SettingsPage({
 
         <section className="mt-10">
           <SectionTitle
-            icon={<Server size={15} strokeWidth={1.8} />}
+            icon={<Server size={15} />}
             title="Custom providers"
             description="Type a provider name and paste your key. DeepSeek, Groq, OpenRouter, Mistral, Together and xAI are set up automatically; for anything else, add its OpenAI-compatible URL."
           />
@@ -74,7 +115,7 @@ export default function SettingsPage({
             {customProviders.map((provider) => (
               <div
                 key={provider.id}
-                className="flex items-center justify-between rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4"
+                className="flex items-center justify-between rounded-2xl border border-white/[0.07] bg-white/[0.02] surface-card p-4"
               >
                 <div className="min-w-0">
                   <div className="text-[13px] text-white">{provider.name}</div>
@@ -91,7 +132,7 @@ export default function SettingsPage({
                   aria-label={`Remove ${provider.name}`}
                   className="shrink-0 rounded p-1.5 text-white/35 transition hover:bg-white/[0.06] hover:text-red-300"
                 >
-                  <Trash2 size={14} strokeWidth={1.8} />
+                  <Trash2 size={14} />
                 </button>
               </div>
             ))}
@@ -140,7 +181,7 @@ function KeyRow({
   const masked = savedKey ? `${savedKey.slice(0, 4)}…${savedKey.slice(-4)}` : ""
 
   return (
-    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
+    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] surface-card p-4">
       <div className="mb-2.5 flex items-center justify-between">
         <span className="text-[13px] text-white">{label}</span>
         {savedKey ? (
@@ -152,7 +193,7 @@ function KeyRow({
               aria-label={`Remove ${label} key`}
               className="rounded p-1 text-white/35 transition hover:bg-white/[0.06] hover:text-red-300"
             >
-              <Trash2 size={13} strokeWidth={1.8} />
+              <Trash2 size={13} />
             </button>
           </span>
         ) : (
@@ -192,7 +233,7 @@ function KeyRow({
         <button
           type="submit"
           disabled={!draft.trim()}
-          className="rounded-lg bg-brand-500 px-4 py-2 text-[12px] font-medium text-white transition hover:bg-brand-400 disabled:cursor-not-allowed disabled:opacity-35"
+          className="rounded-lg brand-fill px-4 py-2 text-[12px] font-medium disabled:cursor-not-allowed"
         >
           Save
         </button>
@@ -322,9 +363,9 @@ function CustomProviderForm({
       <button
         type="submit"
         disabled={!canSave}
-        className="mt-3 flex items-center gap-1.5 rounded-lg bg-brand-500 px-4 py-2 text-[12px] font-medium text-white transition hover:bg-brand-400 disabled:cursor-not-allowed disabled:opacity-35"
+        className="mt-3 flex items-center gap-1.5 rounded-lg brand-fill px-4 py-2 text-[12px] font-medium disabled:cursor-not-allowed"
       >
-        <Plus size={14} strokeWidth={2} />
+        <Plus size={14} />
         Add provider
       </button>
     </form>
