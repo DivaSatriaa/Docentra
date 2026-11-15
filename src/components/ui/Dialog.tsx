@@ -54,7 +54,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
-        className={`w-full animate-pop-in rounded-2xl border border-white/[0.09] bg-ink-850 p-6 shadow-2xl shadow-black/60 ${className}`}
+        className={`w-full animate-pop-in rounded-2xl border border-white/[0.09] bg-ink-850 p-6 surface-pop ${className}`}
       >
         {children}
       </div>

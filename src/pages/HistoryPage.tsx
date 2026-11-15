@@ -109,8 +109,8 @@ export default function HistoryPage({
                         onClick={() => onOpen(conversation.id)}
                         className="flex min-w-0 flex-1 items-center gap-3.5 px-4 py-3.5 text-left"
                       >
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-500/[0.12] text-brand-300">
-                          <MessageSquare size={16} strokeWidth={1.8} />
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl icon-tile">
+                          <MessageSquare size={16} />
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[13.5px] font-medium text-white/90">
@@ -128,7 +128,7 @@ export default function HistoryPage({
                         title="Delete chat"
                         className="mr-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/30 opacity-100 transition hover:bg-red-400/10 hover:text-red-300 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
                       >
-                        <Trash2 size={15} strokeWidth={1.8} />
+                        <Trash2 size={15} />
                       </button>
                     </li>
                   ))}

@@ -20,12 +20,7 @@ export function PageContainer({
 }
 
 export function AmbientGlow() {
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      <div className="absolute left-1/2 top-[-220px] h-[520px] w-[820px] -translate-x-1/2 rounded-full bg-brand-500/[0.09] blur-[150px]" />
-      <div className="absolute bottom-[-260px] right-[-160px] h-[460px] w-[520px] rounded-full bg-plum/[0.08] blur-[160px]" />
-    </div>
-  )
+  return <div className="ambient" aria-hidden="true" />
 }
 
 export function PageHeader({
@@ -65,9 +60,9 @@ export function SearchField({
 }) {
   return (
     <label
-      className={`flex h-10 min-w-0 items-center gap-2.5 rounded-xl border border-white/[0.08] bg-white/[0.025] px-3 transition focus-within:border-brand-500/60 focus-within:bg-white/[0.04] ${className}`}
+      className={`flex h-10 min-w-0 items-center gap-2.5 rounded-xl border border-white/[0.08] bg-white/[0.025] px-3 transition focus-within:border-brand-500/60 focus-within:bg-white/[0.04] focus-within:shadow-[0_0_0_3px_rgba(142,58,89,0.14)] ${className}`}
     >
-      <Search size={16} strokeWidth={1.8} className="shrink-0 text-white/35" />
+      <Search size={16} className="shrink-0 text-white/35" />
       <input
         type="text"
         value={value}
@@ -102,7 +97,7 @@ export function EmptyState({
 }) {
   return (
     <div className="flex animate-rise-in flex-col items-center rounded-2xl border border-dashed border-white/[0.09] px-6 py-14 text-center">
-      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-500/[0.12] text-brand-300">
+      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl icon-tile">
         {icon}
       </div>
       <h3 className="font-display text-[15px] font-medium text-white/90">{title}</h3>
@@ -116,7 +111,7 @@ export function EmptyState({
 
 export function Kbd({ children }: { children: ReactNode }) {
   return (
-    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-white/[0.1] bg-white/[0.04] px-1.5 font-sans text-[10.5px] font-medium text-white/45">
+    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-white/[0.1] border-b-white/[0.05] bg-white/[0.05] px-1.5 shadow-[0_1px_0_rgba(0,0,0,0.4)] font-sans text-[10.5px] font-medium text-white/45">
       {children}
     </kbd>
   )

@@ -24,12 +24,22 @@ import {
 import { PAGE_TITLES, type Page } from "./lib/navigation"
 
 const COLLAPSE_KEY = "docentra.sidebarCollapsed"
+const AUTO_HIDE_KEY = "docentra.sidebarAutoHide"
 
-function readCollapsed() {
+function readFlag(key: string, fallback: boolean) {
   try {
-    return localStorage.getItem(COLLAPSE_KEY) === "1"
+    const value = localStorage.getItem(key)
+    return value === null ? fallback : value === "1"
   } catch {
-    return false
+    return fallback
+  }
+}
+
+function writeFlag(key: string, value: boolean) {
+  try {
+    localStorage.setItem(key, value ? "1" : "0")
+  } catch {
+    // Preference just won't persist.
   }
 }
 
@@ -64,7 +74,16 @@ function App() {
   )
 
   // Shell
-  const [collapsed, setCollapsed] = useState(readCollapsed)
+  // `collapsed` is the saved, manual choice. `autoHidden` is the temporary
+  // focus state after sending a prompt: it never touches the saved choice and
+  // only applies while the chat is on screen.
+  const [collapsed, setCollapsed] = useState(() => readFlag(COLLAPSE_KEY, false))
+  const [autoHideEnabled, setAutoHideEnabled] = useState(() => readFlag(AUTO_HIDE_KEY, true))
+  const [autoHidden, setAutoHidden] = useState(false)
+  // Set when the sidebar is reopened by hand, so the next prompt in this chat
+  // doesn't take it away again.
+  const [keepOpen, setKeepOpen] = useState(false)
+  const sidebarHidden = collapsed || (autoHidden && page === "chat")
   const [mobileOpen, setMobileOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
 
@@ -198,29 +217,50 @@ function App() {
     }
   }
 
-  function toggleCollapsed() {
-    setCollapsed((value) => {
-      try {
-        localStorage.setItem(COLLAPSE_KEY, value ? "0" : "1")
-      } catch {
-        // Preference just won't persist.
-      }
-      return !value
-    })
+  const toggleSidebar = useCallback(() => {
+    const show = sidebarHidden
+    setAutoHidden(false)
+    setKeepOpen(show)
+    setCollapsed(!show)
+    writeFlag(COLLAPSE_KEY, !show)
+  }, [sidebarHidden])
+
+  // Each chat starts with the sidebar back and auto-hide armed again.
+  const [sidebarChatId, setSidebarChatId] = useState(conversationId)
+  if (sidebarChatId !== conversationId) {
+    setSidebarChatId(conversationId)
+    setAutoHidden(false)
+    setKeepOpen(false)
   }
 
-  // Global shortcut: Cmd/Ctrl+K opens search.
+  const handlePromptSent = useCallback(() => {
+    if (autoHideEnabled && !keepOpen) setAutoHidden(true)
+  }, [autoHideEnabled, keepOpen])
+
+  function changeAutoHide(enabled: boolean) {
+    setAutoHideEnabled(enabled)
+    writeFlag(AUTO_HIDE_KEY, enabled)
+    if (!enabled) setAutoHidden(false)
+  }
+
+  // Global shortcuts: Cmd/Ctrl+K opens search, Cmd/Ctrl+B toggles the sidebar.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       const mod = event.metaKey || event.ctrlKey
-      if (mod && event.key.toLowerCase() === "k") {
+      if (!mod || event.altKey || event.shiftKey) return
+      const key = event.key.toLowerCase()
+      if (key === "k") {
         event.preventDefault()
         setPaletteOpen((value) => !value)
+      } else if (key === "b") {
+        event.preventDefault()
+        if (window.matchMedia("(min-width: 1024px)").matches) toggleSidebar()
+        else setMobileOpen((value) => !value)
       }
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [])
+  }, [toggleSidebar])
 
   const activeConversation = conversations.find((c) => c.id === conversationId)
   const title =
@@ -247,8 +287,8 @@ function App() {
         onNewChat={() => void handleNewChat()}
         onRequestDelete={setDeleteTarget}
         onOpenSearch={() => setPaletteOpen(true)}
-        collapsed={collapsed}
-        onToggleCollapsed={toggleCollapsed}
+        hidden={sidebarHidden}
+        onToggleHidden={toggleSidebar}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
       />
@@ -261,6 +301,8 @@ function App() {
               ? `· scoped to ${selectedDocIds.length} document${selectedDocIds.length > 1 ? "s" : ""}`
               : undefined
           }
+          sidebarHidden={sidebarHidden}
+          onShowSidebar={toggleSidebar}
           onOpenMenu={() => setMobileOpen(true)}
           onOpenSearch={() => setPaletteOpen(true)}
           onNewChat={() => void handleNewChat()}
@@ -288,6 +330,7 @@ function App() {
             onDocumentsChanged={() => setDocumentsVersion((v) => v + 1)}
             onTitleChanged={() => void refreshConversations()}
             onMessageCountChange={setActiveMessageCount}
+            onPromptSent={handlePromptSent}
           />
         ) : page === "documents" ? (
           <DocumentsPage onAskDocument={handleAskDocument} />
@@ -309,6 +352,8 @@ function App() {
             onSetKey={setKey}
             onSaveCustom={saveCustomProvider}
             onRemoveCustom={removeCustomProvider}
+            autoHideSidebar={autoHideEnabled}
+            onSetAutoHideSidebar={changeAutoHide}
           />
         )}
       </div>
@@ -328,7 +373,7 @@ function App() {
       <ConfirmDialog
         open={deleteTarget !== null}
         title="Delete chat?"
-        icon={<Trash2 size={18} strokeWidth={1.8} />}
+        icon={<Trash2 size={18} />}
         description={
           <>
             <span className="font-medium text-white/85">

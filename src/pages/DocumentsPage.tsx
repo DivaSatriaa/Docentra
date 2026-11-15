@@ -594,7 +594,7 @@ export default function DocumentsPage({
         {menuDocumentId === document.id && (
           <div
             onMouseDown={(event) => event.stopPropagation()}
-            className="absolute right-0 top-9 z-30 w-40 animate-pop-in overflow-hidden rounded-xl border border-white/[0.09] bg-ink-850 p-1 shadow-2xl shadow-black/50"
+            className="absolute right-0 top-9 z-30 w-40 animate-pop-in overflow-hidden rounded-xl border border-white/[0.09] bg-ink-850 p-1 surface-pop"
           >
             <MenuItem
               icon={<Pencil size={14} />}
@@ -711,7 +711,7 @@ export default function DocumentsPage({
           description="Upload files, then ask Docentra about them."
           actions={
             <Button variant="primary" onClick={handleOpenUpload} disabled={isUploading}>
-              <Upload size={16} strokeWidth={2} />
+              <Upload size={16} />
               {isUploading ? "Uploading..." : "Upload"}
             </Button>
           }
@@ -834,7 +834,7 @@ export default function DocumentsPage({
                 onClick={handleOpenUpload}
                 className="flex w-full flex-col items-center rounded-2xl border border-dashed border-white/[0.12] px-6 py-16 text-center transition hover:border-brand-500/50 hover:bg-brand-500/[0.04]"
               >
-                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-500/[0.12] text-brand-300">
+                <span className="flex h-12 w-12 items-center justify-center rounded-2xl icon-tile">
                   <UploadCloud size={22} />
                 </span>
                 <span className="mt-4 font-display text-[15px] font-medium text-white/90">
@@ -876,7 +876,7 @@ export default function DocumentsPage({
                 <div
                   key={document.id}
                   className={[
-                    "group relative flex flex-col rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 transition duration-200",
+                    "group relative flex flex-col rounded-2xl border border-white/[0.07] bg-white/[0.02] surface-card p-4 transition duration-200",
                     "hover:border-white/[0.13] hover:bg-white/[0.035]",
                     group === "processing" ? "document-processing-shimmer" : "",
                     menuDocumentId === document.id ? "z-20" : "",
@@ -1043,7 +1043,7 @@ export default function DocumentsPage({
       <ConfirmDialog
         open={deleteTarget !== null}
         title="Delete document?"
-        icon={<Trash2 size={18} strokeWidth={1.8} />}
+        icon={<Trash2 size={18} />}
         description={
           <>
             <span className="font-medium text-white/85">
