@@ -62,6 +62,38 @@ export async function deleteConversation(id: string): Promise<void> {
   }
 }
 
+/**
+ * Runs `remove` for every item, a few at a time, and returns the items that
+ * failed. One failure never stops the rest.
+ */
+export async function removeEach<T>(
+  items: T[],
+  remove: (item: T) => Promise<void>,
+  limit = 4,
+): Promise<T[]> {
+  const failed: T[] = []
+  let next = 0
+
+  async function worker() {
+    while (next < items.length) {
+      const item = items[next++]
+      try {
+        await remove(item)
+      } catch (error) {
+        console.error("Failed to delete:", error)
+        failed.push(item)
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  )
+  return failed
+}
+
+export const KOFI_URL = "https://ko-fi.com/divasatria"
+
 /** "Today", "Yesterday", "Previous 7 days", "Previous 30 days", or "Month Year". */
 export function dateGroupLabel(dateString: string, now = new Date()) {
   const date = new Date(dateString)

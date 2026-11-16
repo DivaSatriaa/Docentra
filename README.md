@@ -16,6 +16,8 @@ and click any citation to jump to the highlighted passage in the original file.
 ![PostgreSQL](https://img.shields.io/badge/Postgres_+_pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Status](https://img.shields.io/badge/status-active_development-c2185b)
 
+[![Buy me a coffee on Ko-fi](https://img.shields.io/badge/Buy_me_a_coffee-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/divasatria)
+
 </div>
 
 <br />

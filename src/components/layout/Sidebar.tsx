@@ -20,6 +20,7 @@ import {
   type Conversation,
 } from "../../lib/api"
 import { MOD_KEY, type Page } from "../../lib/navigation"
+import { useDisplayName } from "../../lib/profile"
 
 interface SidebarProps {
   activePage: Page
@@ -128,6 +129,7 @@ function ExpandedContent({
   onToggleHidden,
   onCloseMobile,
 }: SidebarProps) {
+  const displayName = useDisplayName()
   const groups = groupByDate(conversations)
 
   return (
@@ -304,7 +306,7 @@ function ExpandedContent({
         <div className="mt-1.5 flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] px-2.5 py-2">
           <Avatar />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-medium text-white/90">Divas</div>
+            <div className="truncate text-[13px] font-medium text-white/90">{displayName}</div>
             <div className="truncate text-[11px] text-white/35">Personal workspace</div>
           </div>
         </div>
@@ -343,12 +345,13 @@ function NavItem({
 }
 
 export function Avatar({ size = 32 }: { size?: number }) {
+  const initial = useDisplayName().charAt(0).toUpperCase()
   return (
     <div
       style={{ width: size, height: size }}
       className="flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-400 to-plum text-[12px] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] ring-1 ring-white/10"
     >
-      D
+      {initial}
     </div>
   )
 }

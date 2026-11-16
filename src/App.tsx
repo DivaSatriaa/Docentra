@@ -19,6 +19,7 @@ import {
   conversationTitle,
   createConversation,
   deleteConversation,
+  removeEach,
   fetchConversations,
   type Conversation,
 } from "./lib/api"
@@ -242,6 +243,33 @@ function App() {
     }
   }
 
+  /** Deletes every chat, then opens a fresh one. Returns how many failed. */
+  async function deleteAllChats() {
+    const failed = await removeEach(conversations, (c) => deleteConversation(c.id))
+    const remaining = failed.slice().sort(
+      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+    )
+    setSelectedDocIds([])
+    setSelectedCollection(null)
+
+    if (remaining.length > 0) {
+      setConversations(remaining)
+      if (!remaining.some((c) => c.id === conversationId)) {
+        setConversationId(remaining[0].id)
+      }
+    } else {
+      const created = await createConversation()
+      setConversations([created])
+      setConversationId(created.id)
+    }
+    return failed.length
+  }
+
+  function handleAllDocumentsDeleted() {
+    setSelectedDocIds([])
+    setDocumentsVersion((v) => v + 1)
+  }
+
   const toggleSidebar = useCallback(() => {
     const show = sidebarHidden
     setAutoHidden(false)
@@ -393,6 +421,9 @@ function App() {
             onRemoveCustom={removeCustomProvider}
             autoHideSidebar={autoHideEnabled}
             onSetAutoHideSidebar={changeAutoHide}
+            conversations={conversations}
+            onDeleteAllChats={deleteAllChats}
+            onDocumentsDeleted={handleAllDocumentsDeleted}
           />
         )}
       </div>

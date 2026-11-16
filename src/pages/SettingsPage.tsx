@@ -1,17 +1,37 @@
 import {
+  Coffee,
   Eye,
   EyeOff,
+  FileText,
+  HardDrive,
   KeyRound,
+  MessageSquare,
   PanelLeft,
   Plus,
   Server,
   ShieldCheck,
   Trash2,
 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
+import Button from "../components/ui/Button"
+import { ConfirmDialog } from "../components/ui/Dialog"
 import { PageContainer, PageHeader } from "../components/ui/Page"
+import { useToast } from "../components/ui/Toast"
+import { KOFI_URL, removeEach, type Conversation } from "../lib/api"
+import {
+  deleteDocument,
+  fetchDocuments,
+  formatFileSize,
+  type WorkspaceDocument,
+} from "../lib/documents"
 
+import {
+  DEFAULT_DISPLAY_NAME,
+  MAX_DISPLAY_NAME,
+  setDisplayName,
+  useDisplayName,
+} from "../lib/profile"
 import {
   API_PROVIDERS,
   CUSTOM_PRESETS,
@@ -28,6 +48,10 @@ interface SettingsPageProps {
   onRemoveCustom: (id: string) => void
   autoHideSidebar: boolean
   onSetAutoHideSidebar: (enabled: boolean) => void
+  conversations: Conversation[]
+  /** Deletes every chat and resolves with how many could not be deleted. */
+  onDeleteAllChats: () => Promise<number>
+  onDocumentsDeleted: () => void
 }
 
 export default function SettingsPage({
@@ -38,6 +62,9 @@ export default function SettingsPage({
   onRemoveCustom,
   autoHideSidebar,
   onSetAutoHideSidebar,
+  conversations,
+  onDeleteAllChats,
+  onDocumentsDeleted,
 }: SettingsPageProps) {
   return (
     <PageContainer width="max-w-[760px]">
@@ -52,7 +79,8 @@ export default function SettingsPage({
             title="Interface"
             description="How the workspace behaves while you chat."
           />
-          <label className="surface-card flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 transition hover:border-white/[0.12]">
+          <DisplayNameRow />
+          <label className="surface-card mt-3 flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 transition hover:border-white/[0.12]">
             <span className="min-w-0">
               <span className="block text-[13px] text-white">Hide sidebar after sending</span>
               <span className="mt-0.5 block text-[12px] leading-5 text-white/40">
@@ -140,7 +168,230 @@ export default function SettingsPage({
             <CustomProviderForm onSave={onSaveCustom} />
           </div>
         </section>
+
+        <StorageSection
+          conversations={conversations}
+          onDeleteAllChats={onDeleteAllChats}
+          onDocumentsDeleted={onDocumentsDeleted}
+        />
+
+        <section className="mt-10">
+          <div className="surface-card flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
+            <div className="min-w-0">
+              <div className="text-[13px] text-white">Enjoying Docentra?</div>
+              <div className="mt-0.5 text-[12px] leading-5 text-white/40">
+                It's free and runs on your machine. A coffee helps keep it going.
+              </div>
+            </div>
+            <a
+              href={KOFI_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="brand-fill inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-medium whitespace-nowrap transition duration-150 active:translate-y-px"
+            >
+              <Coffee size={16} />
+              Buy me a coffee
+            </a>
+          </div>
+        </section>
     </PageContainer>
+  )
+}
+
+function DisplayNameRow() {
+  const saved = useDisplayName()
+  const [value, setValue] = useState(saved)
+
+  function save() {
+    setDisplayName(value)
+    // Shows the default again when the field was left empty.
+    setValue(value.trim() || DEFAULT_DISPLAY_NAME)
+  }
+
+  return (
+    <div className="surface-card flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
+      <label htmlFor="display-name" className="min-w-0">
+        <span className="block text-[13px] text-white">Your name</span>
+        <span className="mt-0.5 block text-[12px] leading-5 text-white/40">
+          Shown in the sidebar and the greeting. Saved in this browser only.
+        </span>
+      </label>
+      <input
+        id="display-name"
+        value={value}
+        maxLength={MAX_DISPLAY_NAME}
+        placeholder={DEFAULT_DISPLAY_NAME}
+        onChange={(event) => setValue(event.target.value)}
+        onBlur={save}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur()
+        }}
+        className="h-9 w-full rounded-xl border border-white/[0.09] bg-ink-900 px-3 text-[13px] text-white outline-none transition placeholder:text-white/25 focus:border-brand-500/60 sm:w-[200px]"
+      />
+    </div>
+  )
+}
+
+function StorageSection({
+  conversations,
+  onDeleteAllChats,
+  onDocumentsDeleted,
+}: Pick<
+  SettingsPageProps,
+  "conversations" | "onDeleteAllChats" | "onDocumentsDeleted"
+>) {
+  const toast = useToast()
+  // null while loading, or when the list could not be loaded.
+  const [documents, setDocuments] = useState<WorkspaceDocument[] | null>(null)
+  const [confirming, setConfirming] = useState<"chats" | "documents" | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchDocuments()
+      .then((data) => {
+        if (!cancelled) setDocuments(data)
+      })
+      .catch((error) => console.error("Failed to load documents:", error))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const chatCount = conversations.length
+  const documentCount = documents?.length ?? 0
+  const totalSize = (documents ?? []).reduce((sum, d) => sum + d.file_size, 0)
+
+  async function deleteChats() {
+    setBusy(true)
+    try {
+      const failed = await onDeleteAllChats()
+      if (failed === 0) toast("All chats deleted")
+      else toast(`${failed} ${failed === 1 ? "chat" : "chats"} could not be deleted.`, "error")
+    } catch (error) {
+      console.error("Failed to delete chats:", error)
+      toast("Failed to delete chats.", "error")
+    } finally {
+      setBusy(false)
+      setConfirming(null)
+    }
+  }
+
+  async function deleteDocuments() {
+    if (!documents) return
+    setBusy(true)
+    const failed = await removeEach(documents, (d) => deleteDocument(d.id))
+    setDocuments(failed)
+    onDocumentsDeleted()
+    setBusy(false)
+    setConfirming(null)
+    if (failed.length === 0) toast("All documents deleted")
+    else
+      toast(
+        `${failed.length} ${failed.length === 1 ? "document" : "documents"} could not be deleted.`,
+        "error",
+      )
+  }
+
+  return (
+    <section className="mt-10">
+      <SectionTitle
+        icon={<HardDrive size={15} />}
+        title="Storage"
+        description="Clear out chats and documents kept on this machine."
+      />
+
+      <div className="surface-card divide-y divide-white/[0.06] rounded-2xl border border-white/[0.07] bg-white/[0.02]">
+        <StorageRow
+          icon={<MessageSquare size={16} />}
+          title="Chats"
+          detail={`${chatCount} ${chatCount === 1 ? "chat" : "chats"}`}
+          actionLabel="Delete all chats"
+          disabled={chatCount === 0}
+          onAction={() => setConfirming("chats")}
+        />
+        <StorageRow
+          icon={<FileText size={16} />}
+          title="Documents"
+          detail={
+            documents === null
+              ? "Loading..."
+              : `${documentCount} ${documentCount === 1 ? "document" : "documents"} · ${formatFileSize(totalSize)}`
+          }
+          actionLabel="Delete all documents"
+          disabled={documentCount === 0}
+          onAction={() => setConfirming("documents")}
+        />
+      </div>
+
+      <ConfirmDialog
+        open={confirming === "chats"}
+        title="Delete all chats?"
+        icon={<Trash2 size={18} />}
+        description={
+          <>
+            All {chatCount} {chatCount === 1 ? "chat" : "chats"} and their messages
+            will be permanently deleted. Your documents stay. This can't be undone.
+          </>
+        }
+        confirmLabel="Delete all"
+        busy={busy}
+        onConfirm={() => void deleteChats()}
+        onCancel={() => setConfirming(null)}
+      />
+
+      <ConfirmDialog
+        open={confirming === "documents"}
+        title="Delete all documents?"
+        icon={<Trash2 size={18} />}
+        description={
+          <>
+            All {documentCount} {documentCount === 1 ? "document" : "documents"} (
+            {formatFileSize(totalSize)}) and their search index will be permanently
+            deleted. Your chats stay, but their sources can no longer be opened.
+            This can't be undone.
+          </>
+        }
+        confirmLabel="Delete all"
+        busy={busy}
+        onConfirm={() => void deleteDocuments()}
+        onCancel={() => setConfirming(null)}
+      />
+    </section>
+  )
+}
+
+function StorageRow({
+  icon,
+  title,
+  detail,
+  actionLabel,
+  disabled,
+  onAction,
+}: {
+  icon: React.ReactNode
+  title: string
+  detail: string
+  actionLabel: string
+  disabled: boolean
+  onAction: () => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl icon-tile">
+          {icon}
+        </span>
+        <div className="min-w-0">
+          <div className="text-[13px] text-white">{title}</div>
+          <div className="mt-0.5 text-[12px] text-white/40">{detail}</div>
+        </div>
+      </div>
+      <Button size="sm" variant="danger" disabled={disabled} onClick={onAction}>
+        <Trash2 size={13} />
+        {actionLabel}
+      </Button>
+    </div>
   )
 }
 

@@ -37,6 +37,7 @@ import Sparkle from "../ui/Sparkle"
 import { AmbientGlow } from "../ui/Page"
 import { useToast } from "../ui/Toast"
 import { API_V1 } from "../../lib/api"
+import { useDisplayName } from "../../lib/profile"
 import {
   streamMessage,
   type Citation,
@@ -176,6 +177,7 @@ export default function MainChat({
   onMessageCountChange,
   onPromptSent,
 }: MainChatProps) {
+  const displayName = useDisplayName()
   const toast = useToast()
   const [question, setQuestion] = useState("")
   const [messages, setMessages] = useState<Message[]>([])
@@ -605,7 +607,7 @@ export default function MainChat({
               <div className="flex items-center justify-center gap-3">
                 <Sparkle size={26} className="spark-glow text-spark" />
                 <h2 className="font-display text-[30px] font-medium tracking-[-0.02em] text-paper sm:text-[38px]">
-                  {greeting()}, <span className="text-brand-gradient">Divas</span>.
+                  {greeting()}, <span className="text-brand-gradient">{displayName}</span>.
                 </h2>
               </div>
               <p className="mt-2 text-[15px] text-white/45">

@@ -1,4 +1,5 @@
 import {
+  Check,
   Grid2X2,
   List,
   MessageSquarePlus,
@@ -26,8 +27,8 @@ import {
   SearchField,
 } from "../components/ui/Page"
 import { useToast } from "../components/ui/Toast"
-import { API_BASE_URL, WORKSPACE_ID } from "../lib/api"
-import { ACCEPTED_FILE_TYPES } from "../lib/documents"
+import { API_BASE_URL, WORKSPACE_ID, removeEach } from "../lib/api"
+import { ACCEPTED_FILE_TYPES, deleteDocument } from "../lib/documents"
 
 type Document = {
   id: string
@@ -214,6 +215,16 @@ export default function DocumentsPage({
     useState<Document | null>(null)
 
   const [isDeleting, setIsDeleting] =
+    useState(false)
+
+  // Documents ticked for a bulk delete.
+  const [selectedIds, setSelectedIds] =
+    useState<Set<string>>(new Set())
+
+  const [bulkDeleteOpen, setBulkDeleteOpen] =
+    useState(false)
+
+  const [isBulkDeleting, setIsBulkDeleting] =
     useState(false)
 
   const fileInputRef =
@@ -421,29 +432,7 @@ export default function DocumentsPage({
     try {
       setIsDeleting(true)
 
-      const response = await fetch(
-        `${API_BASE_URL}/api/v1/workspaces/${WORKSPACE_ID}/documents/${deleteTarget.id}`,
-        {
-          method: "DELETE",
-        },
-      )
-
-      if (!response.ok) {
-        const body = await response.text()
-
-        let message = ""
-
-        try {
-          const data = JSON.parse(body)
-          message = data?.error ?? ""
-        } catch {
-          message = body
-        }
-
-        throw new Error(
-          message || `Delete failed (${response.status})`,
-        )
-      }
+      await deleteDocument(deleteTarget.id)
 
       setDocuments((current) =>
         current.filter(
@@ -466,6 +455,47 @@ export default function DocumentsPage({
       )
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  function toggleSelected(documentId: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (!next.delete(documentId)) next.add(documentId)
+      return next
+    })
+  }
+
+  async function handleBulkDelete() {
+    const targets = selectedDocuments
+
+    setIsBulkDeleting(true)
+
+    const failed = await removeEach(targets, (document) =>
+      deleteDocument(document.id),
+    )
+    const failedIds = new Set(failed.map((document) => document.id))
+    const deleted = targets.length - failed.length
+
+    setDocuments((current) =>
+      current.filter(
+        (document) =>
+          !targets.some((target) => target.id === document.id) ||
+          failedIds.has(document.id),
+      ),
+    )
+    // Whatever failed stays ticked, ready for another try.
+    setSelectedIds(failedIds)
+    setIsBulkDeleting(false)
+    setBulkDeleteOpen(false)
+
+    if (failed.length === 0) {
+      toast(`Deleted ${deleted} ${deleted === 1 ? "document" : "documents"}`)
+    } else {
+      toast(
+        `Deleted ${deleted}, but ${failed.length} could not be deleted.`,
+        "error",
+      )
     }
   }
 
@@ -573,6 +603,62 @@ export default function DocumentsPage({
   ])
 
   const isFiltering = searchQuery.trim() !== "" || statusFilter !== "all"
+
+  // Only documents that still exist count, whatever the current filter shows.
+  const selectedDocuments = useMemo(
+    () => documents.filter((document) => selectedIds.has(document.id)),
+    [documents, selectedIds],
+  )
+  const selecting = selectedDocuments.length > 0
+  const allVisibleSelected =
+    filteredDocuments.length > 0 &&
+    filteredDocuments.every((document) => selectedIds.has(document.id))
+
+  function toggleSelectAllVisible() {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      for (const document of filteredDocuments) {
+        if (allVisibleSelected) next.delete(document.id)
+        else next.add(document.id)
+      }
+      return next
+    })
+  }
+
+  function renderCheckbox(document: Document) {
+    const checked = selectedIds.has(document.id)
+    return (
+      <label
+        title={checked ? "Deselect" : "Select"}
+        className={[
+          "flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg transition hover:bg-white/[0.06]",
+          // Hidden until hover on desktop, unless a selection is under way.
+          selecting
+            ? ""
+            : "sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100",
+        ].join(" ")}
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={() => toggleSelected(document.id)}
+          aria-label={`Select ${document.name || document.original_name}`}
+          className="peer sr-only"
+        />
+        <span
+          aria-hidden="true"
+          className={[
+            "flex h-[18px] w-[18px] items-center justify-center rounded-md border transition peer-focus-visible:ring-2 peer-focus-visible:ring-brand-300/70",
+            checked
+              ? "border-brand-500 bg-brand-500 text-white"
+              : "border-white/25 text-transparent",
+          ].join(" ")}
+        >
+          <Check size={12} strokeWidth={3} />
+        </span>
+      </label>
+    )
+  }
 
   function renderMenu(document: Document) {
     return (
@@ -795,11 +881,48 @@ export default function DocumentsPage({
         </div>
 
         {!isLoading && !error && documents.length > 0 && (
-          <p className="mt-6 text-[12px] text-white/35">
-            {filteredDocuments.length}{" "}
-            {filteredDocuments.length === 1 ? "document" : "documents"}
-            {isFiltering && ` of ${documents.length}`}
-          </p>
+          <div className="mt-6 flex min-h-8 flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <p className="text-[12px] text-white/35">
+              {selecting ? (
+                <span className="text-white/70">
+                  {selectedDocuments.length} selected
+                </span>
+              ) : (
+                <>
+                  {filteredDocuments.length}{" "}
+                  {filteredDocuments.length === 1 ? "document" : "documents"}
+                  {isFiltering && ` of ${documents.length}`}
+                </>
+              )}
+            </p>
+
+            {filteredDocuments.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" variant="ghost" onClick={toggleSelectAllVisible}>
+                  {allVisibleSelected ? "Deselect all" : "Select all"}
+                </Button>
+                {selecting && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setSelectedIds(new Set())}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => setBulkDeleteOpen(true)}
+                    >
+                      <Trash2 size={13} />
+                      Delete selected
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Loading */}
@@ -880,13 +1003,19 @@ export default function DocumentsPage({
                     "hover:border-white/[0.13] hover:bg-white/[0.035]",
                     group === "processing" ? "document-processing-shimmer" : "",
                     menuDocumentId === document.id ? "z-20" : "",
+                    selectedIds.has(document.id)
+                      ? "border-brand-500/50 bg-brand-500/[0.05]"
+                      : "",
                   ].join(" ")}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/[0.04]">
                       <FileTypeIcon type={document.extension ?? ""} size={28} />
                     </div>
-                    {renderMenu(document)}
+                    <div className="flex items-center gap-0.5">
+                      {renderCheckbox(document)}
+                      {renderMenu(document)}
+                    </div>
                   </div>
 
                   <div
@@ -944,8 +1073,11 @@ export default function DocumentsPage({
                     "group relative flex items-center gap-3.5 px-4 py-3 transition hover:bg-white/[0.025]",
                     index > 0 ? "border-t border-white/[0.05]" : "",
                     menuDocumentId === document.id ? "z-20" : "",
+                    selectedIds.has(document.id) ? "bg-brand-500/[0.05]" : "",
                   ].join(" ")}
                 >
+                  {renderCheckbox(document)}
+
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/[0.04]">
                     <FileTypeIcon type={document.extension ?? ""} size={24} />
                   </div>
@@ -1056,6 +1188,23 @@ export default function DocumentsPage({
         busy={isDeleting}
         onConfirm={() => void handleDelete()}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        title={`Delete ${selectedDocuments.length} ${
+          selectedDocuments.length === 1 ? "document" : "documents"
+        }?`}
+        icon={<Trash2 size={18} />}
+        description={
+          <>
+            The selected documents and their search index will be removed from
+            your workspace. This can't be undone.
+          </>
+        }
+        busy={isBulkDeleting}
+        onConfirm={() => void handleBulkDelete()}
+        onCancel={() => setBulkDeleteOpen(false)}
       />
     </div>
   )

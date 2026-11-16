@@ -45,6 +45,23 @@ export async function fetchDocuments(): Promise<WorkspaceDocument[]> {
   )
 }
 
+export async function deleteDocument(id: string): Promise<void> {
+  const response = await fetch(`${DOCUMENTS_URL}/${id}`, { method: "DELETE" })
+
+  if (!response.ok) {
+    const body = await response.text()
+    let message = body
+
+    try {
+      message = JSON.parse(body)?.error ?? ""
+    } catch {
+      // Not JSON: use the body as it is.
+    }
+
+    throw new Error(message || `Delete failed (${response.status})`)
+  }
+}
+
 export async function uploadDocument(file: File): Promise<WorkspaceDocument> {
   const formData = new FormData()
   formData.append("workspace_id", WORKSPACE_ID)
