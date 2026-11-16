@@ -147,3 +147,41 @@ result = resolve_citations(answer, MIXED, [0.8, 0.4, 0.3])
 check("no strict: wrong label still moved to the right chunk", result.cited == [1], result.cited)
 
 print("all web citation checks passed")
+
+# --- No source is better than a wrong one. The closest document is never forced
+# onto an answer, and a sentence that says the information is missing is not
+# given a source. The chunk is about Semarang; the question was about Malang.
+SEMARANG = ["o TAMAN SRI GUNTING Merupakan salah satu landmark di Kawasan Kota Lama Semarang, Taman Srigunting adalah ruang terbuka di depan Gereja Blenduk."]
+
+answer = "Saya tidak memiliki informasi tentang waktu pendirian Universitas Brawijaya di Malang dari konteks yang diberikan."
+result = resolve_citations(answer, SEMARANG, [0.535])
+check("refusal without labels: no source forced", result.cited == [], result.cited)
+
+answer = "Saya tidak memiliki cukup informasi dari dokumen yang diberikan untuk menjawab kapan Universitas Brawijaya didirikan."
+result = resolve_citations(answer, SEMARANG, [0.535])
+check("refusal (other wording): no source forced", result.cited == [], result.cited)
+
+answer = "Pendirian Universitas Brawijaya terjadi pada tahun 1963 menurut satu sumber."
+result = resolve_citations(answer, SEMARANG, [0.535])
+check("unlabelled and unmatched answer: no source forced", result.cited == [], result.cited)
+
+answer = "Dokumen yang tersedia tidak membahas Universitas Brawijaya, sehingga tidak menjawab pertanyaan ini [S1]."
+result = resolve_citations(answer, SEMARANG, [0.535])
+check("labelled 'documents do not cover it': label dropped", result.cited == [] and "[" not in result.answer, (result.cited, result.answer))
+
+answer = "The documents do not contain any information about this university [S1]."
+result = resolve_citations(answer, SEMARANG, [0.535])
+check("labelled English 'does not contain': label dropped", result.cited == [] and "[" not in result.answer, (result.cited, result.answer))
+
+answer = "Biaya pendaftaran Gel. 2 adalah Rp45.000 untuk individu [S1]. Dokumen tidak membahas hadiah uang pembinaan [S1]."
+result = resolve_citations(answer, KREASI_CHUNKS, [0.55, 0.31, 0.30, 0.40, 0.43, 0.19])
+print("      real claim cited:", result.cited)
+check("real claim keeps a source", len(result.cited) == 1, result.cited)
+check("only the absence sentence loses its label", result.answer.count("[") == 1, result.answer)
+
+answer = "Dokumen tidak membahas hadiah uang pembinaan [S1]. Pendaftaran lomba esai ditutup pada 2 Desember 2026 menurut situs resmi panitia [S2]."
+result = resolve_citations(answer, MIXED, [0.8, 0.4, 0.3], strict={2, 3})
+check("a supported web claim keeps its label next to an absence sentence", result.cited == [2], result.cited)
+check("the absence sentence has no label", "pembinaan [" not in result.answer and "[" in result.answer, result.answer)
+
+print("all no-forced-source checks passed")

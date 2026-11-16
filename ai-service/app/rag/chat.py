@@ -13,6 +13,7 @@ from app.rag.doc_match import list_documents, match_documents
 from app.rag.embeddings import create_embeddings
 from app.rag.lang import not_found_message
 from app.rag.generation import generate_answer_stream
+from app.rag.progress import run_with_progress
 from app.rag.query_rewriter import rewrite_query
 from app.rag.retriever import (
     document_chunks,
@@ -178,8 +179,21 @@ def chat_stream(
     web_results: list[dict] = []
     web_status: dict | None = None
     if web_search:
+        count = len(results)
+        if count == 0:
+            doc_text = "No passages found in your documents"
+        elif count == 1:
+            doc_text = "1 passage found in your documents"
+        else:
+            doc_text = f"{count} passages found in your documents"
+        yield "step", {"kind": "documents", "ok": count > 0, "text": doc_text}
+
         try:
-            web_results, web_status = gather_web(question, search_query, results, llm)
+            web_results, web_status = yield from run_with_progress(
+                lambda on_step: gather_web(
+                    question, search_query, results, llm, on_step=on_step
+                )
+            )
         except Exception:
             web_results = []
             web_status = {"used": False, "status": "unavailable", "query": ""}

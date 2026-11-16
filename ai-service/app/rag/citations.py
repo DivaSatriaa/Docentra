@@ -36,6 +36,19 @@ _SEGMENT_SPLIT = re.compile(r"(?<=[.!?])\s+|\s+\|\s+|\n+|\s*[☐☑☒✓✔•�
 _CLAIM_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
 _WORD = re.compile(r"\w+", re.UNICODE)
 
+# A sentence saying the information is missing ("the documents don't cover
+# this") is not a claim a source can back, so it never gets one. Without this,
+# the label the model puts after it points at whichever chunk was closest.
+_NO_INFO = re.compile(
+    r"""
+    \btidak\s+(?:memiliki|menemukan|ada|terdapat|tersedia)\s+(?:cukup\s+)?(?:informasi|data)
+    | \b(?:dokumen|konteks|sumber|teks)\b.{0,60}?\btidak\s+(?:membahas|memuat|menyebut(?:kan)?|mencantumkan|mengandung|berisi|menjelaskan|menjawab)
+    | \b(?:documents?|context|sources?|excerpts?)\b.{0,60}?\b(?:do(?:es)?\s+not|don't|doesn't|did\s+not)\s+(?:contain|mention|cover|discuss|include|address|say|provide)
+    | \b(?:no|not\s+enough|insufficient)\s+(?:relevant\s+)?information\b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
 MIN_SEGMENT_CHARS = 12
 MAX_HIGHLIGHTS = 3
 
@@ -196,6 +209,10 @@ def resolve_citations(
 ) -> Resolved:
     """Check the answer's source labels against the chunks and fix them up.
 
+    `similarities` is accepted for callers but no longer used: a source is
+    never attached just because it was the closest chunk, only when the
+    sentence's own words back it.
+
     `strict` holds the source numbers that are web pages. Their labels are
     only kept when the page text supports the sentence: never on trust, and
     never by moving a label between a document and a web page.
@@ -231,6 +248,13 @@ def resolve_citations(
             numbers[i] = []
             pieces[i] = _set_markers(pieces[i], [], max_source)
 
+    # Sentences that only say something is missing carry no source at all.
+    absent = [bool(text) and bool(_NO_INFO.search(text)) for text in texts]
+    for i, is_absent in enumerate(absent):
+        if is_absent and numbers[i]:
+            numbers[i] = []
+            pieces[i] = _set_markers(pieces[i], [], max_source)
+
     resolved = Resolved(answer=answer)
 
     def keep(n: int, text: str) -> None:
@@ -239,7 +263,7 @@ def resolve_citations(
         resolved.claims.setdefault(n, []).append(text)
 
     for i, text in enumerate(texts):
-        if not text or (has_markers and not numbers[i]):
+        if not text or absent[i] or (has_markers and not numbers[i]):
             continue
 
         terms = _terms(text)
@@ -286,12 +310,6 @@ def resolve_citations(
             pieces[i] = _set_markers(pieces[i], chosen, max_source)
         for n in chosen:
             keep(n, text)
-
-    if not resolved.cited and not has_markers and similarities:
-        # Nothing matched by content either: show the closest document.
-        documents = [j for j in range(max_source) if j + 1 not in strict]
-        if documents:
-            resolved.cited = [max(documents, key=lambda j: similarities[j]) + 1]
 
     parts[0::2] = pieces
     rewritten = "".join(parts)

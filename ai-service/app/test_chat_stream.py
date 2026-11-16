@@ -114,8 +114,10 @@ WEB = [
 web_state = {"calls": 0, "passages": WEB, "status": {"used": True, "status": "ok", "query": "biaya lomba esai"}, "fail": False}
 
 
-def fake_gather(question, search_query, results, llm=None):
+def fake_gather(question, search_query, results, llm=None, on_step=None):
     web_state["calls"] += 1
+    if on_step:
+        on_step({"kind": "query", "ok": True, "text": "biaya lomba esai"})
     if web_state["fail"]:
         raise RuntimeError("boom")
     return list(web_state["passages"]), dict(web_state["status"])
@@ -125,7 +127,9 @@ chat_mod.gather_web = fake_gather
 
 # Off: the web is never touched.
 state.update(found=True, model=["Biaya ", "Rp45.000 ", "[S1]."])
-done = list(chat_mod.chat_stream("Berapa biaya pendaftaran?", **ARGS))[-1][1]
+events = list(chat_mod.chat_stream("Berapa biaya pendaftaran?", **ARGS))
+done = events[-1][1]
+check("web off: no step events", "step" not in [n for n, _ in events])
 check("web off: provider not called", web_state["calls"] == 0)
 check("web off: no web key, prompt in document mode", "web" not in done and seen["web"] is False, done.keys())
 
@@ -134,6 +138,13 @@ state.update(model=["Menurut dokumen biaya pendaftaran Rp45.000 per orang [S1]. 
 events = list(chat_mod.chat_stream("Berapa biaya pendaftaran?", web_search=True, **ARGS))
 done = events[-1][1]
 check("web on: provider called once", web_state["calls"] == 1)
+names = [n for n, _ in events]
+steps = [p for n, p in events if n == "step"]
+first_delta = names.index("delta")
+check("web on: steps come first, then deltas, one done", names[:first_delta] == ["step"] * len(steps) and len(steps) == 2 and set(names[first_delta:-1]) == {"delta"} and names.count("done") == 1 and names[-1] == "done", names)
+check("web on: documents step first", steps[0]["kind"] == "documents" and steps[0]["ok"] is True and "1 passage found in your documents" == steps[0]["text"], steps)
+check("web on: then the gather step", steps[1]["kind"] == "query", steps)
+check("web on: chat() equals done", chat_mod.chat("Berapa biaya pendaftaran?", web_search=True, **ARGS) == done)
 # Only the first chunk passes the similarity filter, so the web page is S2.
 check("web on: web passage numbered after the chunks", "[S2]" in seen["context"] and "https://contoh.id/lomba" in seen["context"] and "Web page" in seen["context"], seen["context"])
 check("web on: prompt in web mode", seen["web"] is True)
@@ -153,7 +164,9 @@ check("web on: unsupported web citation dropped", all(c["kind"] == "document" fo
 # The web part fails: the documents still answer.
 web_state["fail"] = True
 state.update(model=["Biaya ", "Rp45.000 ", "[S1]."])
-done = list(chat_mod.chat_stream("Berapa biaya pendaftaran?", web_search=True, **ARGS))[-1][1]
+events = list(chat_mod.chat_stream("Berapa biaya pendaftaran?", web_search=True, **ARGS))
+done = events[-1][1]
+check("web down: step before the failure still yielded", [p["kind"] for n, p in events if n == "step"] == ["documents", "query"], events)
 check("web down: answered from documents", "[1]" in done["answer"] and len(done["citations"]) == 1, done)
 check("web down: reported unavailable", done["web"]["status"] == "unavailable" and done["web"]["used"] is False and seen["web"] is False, done["web"])
 web_state["fail"] = False
@@ -166,6 +179,7 @@ check("web only: answered from the web", [c["kind"] for c in done["citations"]] 
 # Neither has anything.
 web_state.update(passages=[], status={"used": False, "status": "no_results", "query": "q"})
 events = list(chat_mod.chat_stream("Berapa biaya pendaftaran?", web_search=True, **ARGS))
-check("nothing anywhere: not found, web status kept", [n for n, _ in events] == ["done"] and events[0][1]["citations"] == [] and events[0][1]["web"]["status"] == "no_results", events)
+check("nothing anywhere: not found, web status kept", {n for n, _ in events} == {"step", "done"} and events[-1][0] == "done" and events[-1][1]["citations"] == [] and events[-1][1]["web"]["status"] == "no_results", events)
+check("nothing anywhere: documents step not ok", events[0][1]["kind"] == "documents" and events[0][1]["ok"] is False and events[0][1]["text"] == "No passages found in your documents", events[0])
 
 print("all chat stream checks passed")

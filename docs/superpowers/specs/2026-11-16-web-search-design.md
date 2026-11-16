@@ -218,15 +218,20 @@ see the steps, with the web addresses read.
 - While waiting, a panel lists the steps as they finish: documents searched,
   the keyword query sent, each page read (address, clickable) or not
   openable.
-- After the answer, the panel collapses to the summary line the message
-  already has ("Searched the web for: ...", addresses read), and opens to
-  show the same facts.
+- Once the answer starts, the panel collapses to the summary line the
+  message already has ("Searched the web for: ...", addresses read), and
+  opens to show the steps. (Collapsing when the first words arrive, not when
+  the answer ends, keeps the text from jumping while it streams.)
 - A failed search says so in the panel, not only in a note under the answer.
 
 ### Non-goals
 
-- No stored step history. After a reload the message shows only the summary
-  built from `message.web`, which is already saved. (Decided with the user.)
+- No stored step history. `message.web` is not stored either (the backend
+  only passes it through in the `done` payload), so after a reload a message
+  shows no web note at all, only its web sources, exactly as today. Keeping
+  the summary across reloads would need a stored field and is out of scope.
+  (Corrected 2026-11-16: the first version of this addendum wrongly said the
+  summary was already saved.)
 - No technical steps (embedding, ranking, prompt building).
 - Web search off: unchanged, the existing waiting line stays.
 
@@ -249,9 +254,10 @@ see the steps, with the web addresses read.
 - Backend: no change expected (events are forwarded by name). The step
   events are not saved; only the final `done` payload is, as now.
 - Frontend: `streamMessage` gets an `onStep` handler; the sending message
-  keeps a `steps` list in state. The panel is open while streaming and
-  closed once `done` arrives; closed, it renders the existing summary line.
-  Past messages render the summary from `message.web` as they do now.
+  keeps a `steps` list in state. The panel is open while waiting for the
+  first words and collapsed from then on; collapsed, it shows the existing
+  summary line. Messages loaded from history have no steps and render as
+  they do now.
 
 ### Testing
 
@@ -259,8 +265,8 @@ see the steps, with the web addresses read.
   gives `ok: false`; a search failure gives a failed step; web off emits no
   steps; the final `done` payload is unchanged.
 - Frontend: build and lint, then a browser pass with web search on: panel
-  fills while waiting, collapses to the summary after, reload shows the
-  summary only.
+  fills while waiting, collapses to the summary once the answer starts,
+  reload shows no panel.
 
 ### Left to the builder
 

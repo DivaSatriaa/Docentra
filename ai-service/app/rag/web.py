@@ -359,12 +359,17 @@ def gather(
     search_query: str,
     document_results: list[dict],
     llm: dict | None = None,
+    on_step=None,
 ) -> tuple[list[dict], dict]:
     """Web passages for the question, and what happened while getting them.
 
     A URL in the question is read first. If it can't be read, the closest URL
     found in the documents is tried instead. Search results fill the rest.
+
+    `on_step`, when given, is called with a step dict for each thing done:
+    {"kind": "query" | "page", "ok": bool, "text": str, "url"?: str}.
     """
+    emit = on_step or (lambda step: None)
     document_texts = [result["text"] for result in document_results]
     status: dict = {"used": False, "status": "ok", "query": ""}
     pages: list[dict] = []  # in priority order
@@ -391,20 +396,27 @@ def gather(
         if page is not None:
             status["used_url"] = page["url"]
             pages.append(page)
+            emit({"kind": "page", "ok": True, "text": page["title"], "url": page["url"]})
+        else:
+            emit({"kind": "page", "ok": False, "text": urlsplit(requested).netloc, "url": requested})
 
     query = build_query(question, search_query, document_texts, llm)
     status["query"] = query
 
     search_failed = False
     try:
+        if query:
+            emit({"kind": "query", "ok": True, "text": query})
         hits = search(query, SEARCH_RESULTS) if query else []
         shorter = shorten_query(query)
         if not hits and shorter and shorter != query:
             hits = search(shorter, SEARCH_RESULTS)
             if hits:
                 status["query"] = shorter
+                emit({"kind": "query", "ok": True, "text": shorter})
     except Exception:
         hits, search_failed = [], True
+        emit({"kind": "query", "ok": False, "text": "Web search unavailable"})
 
     seen = {_bare(page["url"]) for page in pages}
     hits = [hit for hit in hits if _bare(hit["url"]) not in seen][:FETCH_PAGES]
@@ -414,6 +426,10 @@ def gather(
             fetched = list(pool.map(lambda hit: fetch_page(hit["url"]), hits))
 
         for hit, page in zip(hits, fetched):
+            if page is not None:
+                emit({"kind": "page", "ok": True, "text": page["title"] or hit["title"], "url": hit["url"]})
+            else:
+                emit({"kind": "page", "ok": False, "text": urlsplit(hit["url"]).netloc, "url": hit["url"]})
             if page is not None:
                 pages.append({**page, "url": hit["url"], "title": page["title"] or hit["title"]})
             elif len(hit["snippet"]) >= MIN_PASSAGE_CHARS:

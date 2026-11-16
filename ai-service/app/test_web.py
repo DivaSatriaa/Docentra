@@ -220,4 +220,64 @@ web.search = lambda query, max_results: tried.append(query) or []
 passages, status = web.gather("Di mana kantornya?", "kantor pusat malang jawa timur alamat lengkap", DOCS, None)
 check("still empty: no_results, not unavailable", passages == [] and status["status"] == "no_results" and len(tried) == 2, (status, tried))
 
+# --- gather() reports its steps (fakes set explicitly)
+web.generate = lambda prompt, llm=None: "kreasi fest lomba esai"
+web.fetch_page = fake_fetch
+web.search = fake_search
+GIVEN_Q = "Apakah biaya di artikel ini benar?"
+
+steps = []
+passages, status = web.gather(GIVEN_Q, "biaya lomba esai", DOCS, None, on_step=steps.append)
+check("steps: query comes first", steps[0] == {"kind": "query", "ok": True, "text": "kreasi fest lomba esai"}, steps)
+check(
+    "steps: one page step per hit, read or not",
+    steps[1:] == [
+        {"kind": "page", "ok": True, "text": "Hasil satu", "url": "https://hasil.com/1"},
+        {"kind": "page", "ok": True, "text": "Hasil dua", "url": "https://hasil.com/2"},
+        {"kind": "page", "ok": False, "text": "hasil.com", "url": "https://hasil.com/rusak"},
+    ],
+    steps,
+)
+check("steps: query before every page", [s["kind"] for s in steps] == ["query", "page", "page", "page"], steps)
+
+steps = []
+passages, status = web.gather("Bandingkan dengan https://contoh.id/asli ya", "bandingkan artikel", DOCS, None, on_step=steps.append)
+check(
+    "steps: given url first, then query",
+    steps[0] == {"kind": "page", "ok": True, "text": "Artikel asli", "url": "https://contoh.id/asli"}
+    and steps[1]["kind"] == "query" and [s["kind"] for s in steps].count("query") == 1,
+    steps,
+)
+
+tried.clear()
+web.search = only_short
+web.fetch_page = lambda url: None
+web.generate = lambda prompt, llm=None: "kantor pusat malang jawa timur alamat lengkap"
+steps = []
+passages, status = web.gather("Di mana kantornya?", "kantor pusat malang jawa timur alamat lengkap", DOCS, None, on_step=steps.append)
+queries = [s for s in steps if s["kind"] == "query"]
+check(
+    "steps: shorter query gives a second query step",
+    len(queries) == 2 and queries[0]["text"] == tried[0] and queries[1] == {"kind": "query", "ok": True, "text": tried[1]},
+    steps,
+)
+
+web.search = down
+web.fetch_page = fake_fetch
+web.generate = lambda prompt, llm=None: "kreasi fest lomba esai"
+steps = []
+passages, status = web.gather(GIVEN_Q, "biaya lomba esai", DOCS, None, on_step=steps.append)
+check(
+    "steps: provider down: query ok, then query failed",
+    steps == [
+        {"kind": "query", "ok": True, "text": "kreasi fest lomba esai"},
+        {"kind": "query", "ok": False, "text": "Web search unavailable"},
+    ] and status["status"] == "unavailable",
+    (steps, status),
+)
+
+web.search = fake_search
+passages, status = web.gather(GIVEN_Q, "biaya lomba esai", DOCS, None, on_step=None)
+check("steps: on_step=None still works", status["status"] == "ok" and passages, status)
+
 print("all web checks passed")

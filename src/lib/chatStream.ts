@@ -34,7 +34,16 @@ export type StreamDonePayload = {
   message_id?: string
 }
 
+/** One line of progress while the web is searched. Text and url come from the web. */
+export type StreamStep = {
+  kind: "documents" | "query" | "page"
+  ok: boolean
+  text: string
+  url?: string
+}
+
 export type StreamHandlers = {
+  onStep?(step: StreamStep): void
   onDelta(text: string): void
   onDone(payload: StreamDonePayload): void
 }
@@ -85,7 +94,7 @@ function parseJson<T>(data: string, name: string): T {
 
 /**
  * POST `body` as JSON to `url` and consume the SSE response, forwarding
- * `delta` and `done` events. Resolves after `done`; rejects on HTTP errors,
+ * `step`, `delta` and `done` events. Resolves after `done`; rejects on HTTP errors,
  * `error` events, a truncated stream, or abort (native AbortError).
  */
 export async function streamMessage(
@@ -113,7 +122,9 @@ export async function streamMessage(
   // Returns true once a terminal `done` event has been handled.
   const dispatch = (events: SseEvent[]): boolean => {
     for (const ev of events) {
-      if (ev.event === "delta") {
+      if (ev.event === "step") {
+        handlers.onStep?.(parseJson<StreamStep>(ev.data, "step"))
+      } else if (ev.event === "delta") {
         handlers.onDelta(parseJson<{ text: string }>(ev.data, "delta").text)
       } else if (ev.event === "done") {
         handlers.onDone(parseJson<StreamDonePayload>(ev.data, "done"))

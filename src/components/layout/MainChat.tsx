@@ -31,6 +31,7 @@ import ModelPicker from "../chat/ModelPicker"
 import DocumentScopePicker from "../chat/DocumentScopePicker"
 import UploadButton from "../chat/UploadButton"
 import type { ViewerSource } from "../viewer/SourceViewer"
+import type { WebSource } from "../viewer/WebPreview"
 import BrandMark from "../ui/BrandMark"
 import Sparkle from "../ui/Sparkle"
 import { AmbientGlow } from "../ui/Page"
@@ -39,6 +40,7 @@ import { API_V1 } from "../../lib/api"
 import {
   streamMessage,
   type Citation,
+  type StreamStep,
   type WebStatus,
 } from "../../lib/chatStream"
 import { documentCountLabel, type CollectionScope } from "../../lib/collections"
@@ -54,6 +56,7 @@ import {
 
 // The viewer pulls in pdf.js, so load it only when a source is opened.
 const SourceViewer = lazy(() => import("../viewer/SourceViewer"))
+const WebPreview = lazy(() => import("../viewer/WebPreview"))
 
 const PROMPTS = [
   {
@@ -90,6 +93,26 @@ type Message = {
   scope?: string[]
   /** Only on answers received in this session; not stored. */
   web?: WebStatus
+  /** This session only, not stored; after a reload there is no web note, only web sources. */
+  steps?: StreamStep[]
+}
+
+/** One place for the web search wording, used by the panel header and the note. */
+function webSummary(web: WebStatus): string {
+  const base =
+    web.status === "unavailable"
+      ? "Web search was unavailable. Answered from your documents only."
+      : web.status === "no_results"
+        ? `Nothing relevant found on the web${web.query ? ` for: ${web.query}` : ""}. Answered from your documents only.`
+        : `Searched the web for: ${web.query}`
+  const url = web.requested_url
+    ? web.used_url === web.requested_url
+      ? ` · Read ${web.used_url}`
+      : web.used_url
+        ? ` · Couldn't open ${web.requested_url}; read ${web.used_url} from your documents instead.`
+        : ` · Couldn't open ${web.requested_url}.`
+    : ""
+  return base + url
 }
 
 function siteName(url: string) {
@@ -158,6 +181,8 @@ export default function MainChat({
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [streamingId, setStreamingId] = useState<string | null>(null)
+  // Web search progress of the request in flight, before its answer exists.
+  const [liveSteps, setLiveSteps] = useState<StreamStep[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(true)
   const [error, setError] = useState("")
   const [failedQuestion, setFailedQuestion] = useState<string | null>(null)
@@ -179,7 +204,24 @@ export default function MainChat({
     }
   }, [conversationId])
 
-  const openSource = (citation: Citation, n: number) =>
+  const [activeWeb, setActiveWeb] = useState<WebSource | null>(null)
+
+  // One side panel at a time: a document in the viewer, or a web source.
+  const openSource = (citation: Citation, n: number) => {
+    if (citation.kind === "web") {
+      if (!citation.url) return
+      setActiveSource(null)
+      setActiveWeb({
+        source: n,
+        url: citation.url,
+        title: citation.title ?? "",
+        site: siteName(citation.url),
+        snippet: citation.snippet,
+        highlights: citation.highlights,
+      })
+      return
+    }
+    setActiveWeb(null)
     setActiveSource({
       key: crypto.randomUUID(),
       source: n,
@@ -189,7 +231,9 @@ export default function MainChat({
       snippet: citation.snippet,
       highlights: citation.highlights,
     })
+  }
   const closeSource = useCallback(() => setActiveSource(null), [])
+  const closeWeb = useCallback(() => setActiveWeb(null), [])
 
   // The parent remounts this component per conversation, so this runs once per chat.
   useEffect(() => {
@@ -250,6 +294,8 @@ export default function MainChat({
     const userId = crypto.randomUUID()
     // Set on the first delta; keeps the same React key through to "done".
     let assistantId: string | null = null
+    const steps: StreamStep[] = []
+    setLiveSteps([])
 
     setMessages((current) => [
       ...current,
@@ -278,6 +324,11 @@ export default function MainChat({
           web_search: webSearch || undefined,
         },
         {
+          onStep: (step) => {
+            if (controller.signal.aborted) return
+            steps.push(step)
+            setLiveSteps([...steps])
+          },
           onDelta: (delta) => {
             if (controller.signal.aborted) return
             if (assistantId === null) {
@@ -285,8 +336,14 @@ export default function MainChat({
               assistantId = id
               setMessages((current) => [
                 ...current,
-                { id, role: "assistant", content: delta },
+                {
+                  id,
+                  role: "assistant",
+                  content: delta,
+                  steps: steps.length > 0 ? steps : undefined,
+                },
               ])
+              setLiveSteps([])
               setStreamingId(id)
             } else {
               const id = assistantId
@@ -311,8 +368,10 @@ export default function MainChat({
                   citations: payload.citations,
                   scope: payload.scope,
                   web: payload.web,
+                  steps: steps.length > 0 ? steps : undefined,
                 },
               ])
+              setLiveSteps([])
             } else {
               const id = assistantId
               setMessages((current) =>
@@ -371,6 +430,7 @@ export default function MainChat({
     } finally {
       if (abortRef.current === controller) {
         abortRef.current = null
+        setLiveSteps([])
         setIsLoading(false)
         setStreamingId(null)
       }
@@ -526,10 +586,17 @@ export default function MainChat({
           isLoading={isLoading}
           isWaiting={isLoading && streamingId === null}
           waitingLabel={waitingLabel}
+          liveSteps={liveSteps}
           composer={composer}
           errorBanner={errorBanner}
           onOpenSource={openSource}
-          activeSourceKey={activeSource ? `${activeSource.document_id}:${activeSource.source}` : null}
+          activeSourceKey={
+            activeSource
+              ? `${activeSource.document_id}:${activeSource.source}`
+              : activeWeb
+                ? `web:${activeWeb.url}:${activeWeb.source}`
+                : null
+          }
         />
       ) : (
         <div className="relative z-10 flex flex-1 overflow-y-auto px-4 sm:px-8">
@@ -644,6 +711,11 @@ export default function MainChat({
         <SourceViewer source={activeSource} onClose={closeSource} />
       </Suspense>
     )}
+    {activeWeb && (
+      <Suspense fallback={null}>
+        <WebPreview source={activeWeb} onClose={closeWeb} />
+      </Suspense>
+    )}
     </div>
   )
 }
@@ -653,6 +725,7 @@ function ConversationView({
   isLoading,
   isWaiting,
   waitingLabel,
+  liveSteps,
   composer,
   errorBanner,
   onOpenSource,
@@ -663,6 +736,7 @@ function ConversationView({
   /** True while a request is in flight and no answer text has arrived yet. */
   isWaiting: boolean
   waitingLabel: string
+  liveSteps: StreamStep[]
   composer: ReactNode
   errorBanner: ReactNode
   onOpenSource: (citation: Citation, n: number) => void
@@ -714,10 +788,21 @@ function ConversationView({
           {isWaiting && (
             <div className="flex animate-rise-in gap-3.5">
               <AssistantAvatar />
-              <div className="flex items-center gap-3 pt-1.5 text-[13px] text-white/40">
-                <TypingDots />
-                {waitingLabel}
-              </div>
+              {liveSteps.length > 0 ? (
+                // Dots and the panel's first line sit level with the avatar;
+                // the steps grow downwards from there.
+                <div className="flex items-start gap-3 pt-1.5">
+                  <span className="flex h-5 items-center">
+                    <TypingDots />
+                  </span>
+                  <WebActivity steps={liveSteps} waiting defaultOpen flush />
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 pt-1.5 text-[13px] text-white/40">
+                  <TypingDots />
+                  {waitingLabel}
+                </div>
+              )}
             </div>
           )}
 
@@ -746,6 +831,94 @@ function AssistantAvatar() {
   return (
     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-ink-800 surface-card">
       <BrandMark size={20} />
+    </div>
+  )
+}
+
+function WebActivity({
+  steps,
+  web,
+  waiting = false,
+  defaultOpen,
+  flush = false,
+}: {
+  steps: StreamStep[]
+  web?: WebStatus
+  /** True only before the first words of the answer have arrived. */
+  waiting?: boolean
+  defaultOpen: boolean
+  /** No top margin: the caller lines the panel up itself. */
+  flush?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  // `web` only arrives with the final event; until then, describe from the steps.
+  const searchedQuery = steps.find((s) => s.kind === "query" && s.ok)?.text
+  const searchFailed = steps.some((s) => s.kind === "query" && !s.ok)
+  const summary = web
+    ? webSummary(web)
+    : searchFailed
+      ? webSummary({ used: false, status: "unavailable", query: "" })
+      : waiting
+        ? "Searching the web..."
+        : searchedQuery
+          ? `Searched the web for: ${searchedQuery}`
+          : "Searched the web"
+  return (
+    <div className={`${flush ? "" : "mt-3 "}text-[11.5px] leading-5 text-white/35`}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex items-start gap-1.5 text-left transition hover:text-white/55"
+      >
+        <Globe2 size={12} className="mt-1 shrink-0" />
+        <span className="min-w-0 break-words">
+          {summary}
+        </span>
+        <ChevronDown
+          size={12}
+          className={`mt-1 shrink-0 transition ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && (
+        <ul className="mt-1.5 space-y-1 pl-[18px]">
+          {steps.map((step, i) => {
+            const isLink =
+              step.kind === "page" &&
+              !!step.url &&
+              /^https?:\/\//.test(step.url)
+            return (
+              <li key={i} className="flex items-start gap-1.5">
+                {step.ok ? (
+                  <Check size={12} className="mt-1 shrink-0" />
+                ) : (
+                  <X size={12} className="mt-1 shrink-0" />
+                )}
+                <span className="min-w-0 break-words">
+                  {isLink ? (
+                    <a
+                      href={step.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline-offset-2 hover:text-white/60 hover:underline"
+                    >
+                      {step.text}
+                    </a>
+                  ) : (
+                    <>
+                      {step.kind === "query" && step.ok && "Keywords: "}
+                      {step.text}
+                    </>
+                  )}
+                  {step.kind === "page" && step.url && (
+                    <> · {siteName(step.url)}</>
+                  )}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }
@@ -837,23 +1010,21 @@ function AssistantMessage({
           </p>
         )}
 
-        {message.web && (
-          <p className="mt-3 flex items-start gap-1.5 text-[11.5px] leading-5 text-white/35">
-            <Globe2 size={12} className="mt-1 shrink-0" />
-            <span className="min-w-0 break-words">
-              {message.web.status === "unavailable"
-                ? "Web search was unavailable. Answered from your documents only."
-                : message.web.status === "no_results"
-                  ? `Nothing relevant found on the web${message.web.query ? ` for: ${message.web.query}` : ""}. Answered from your documents only.`
-                  : `Searched the web for: ${message.web.query}`}
-              {message.web.requested_url &&
-                (message.web.used_url === message.web.requested_url
-                  ? ` · Read ${message.web.used_url}`
-                  : message.web.used_url
-                    ? ` · Couldn't open ${message.web.requested_url}; read ${message.web.used_url} from your documents instead.`
-                    : ` · Couldn't open ${message.web.requested_url}.`)}
-            </span>
-          </p>
+        {message.steps && message.steps.length > 0 ? (
+          <WebActivity
+            steps={message.steps}
+            web={message.web}
+            defaultOpen={false}
+          />
+        ) : (
+          message.web && (
+            <p className="mt-3 flex items-start gap-1.5 text-[11.5px] leading-5 text-white/35">
+              <Globe2 size={12} className="mt-1 shrink-0" />
+              <span className="min-w-0 break-words">
+                {webSummary(message.web)}
+              </span>
+            </p>
+          )
         )}
 
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
@@ -891,16 +1062,16 @@ function AssistantMessage({
 
               if (citation.kind === "web" && citation.url) {
                 return (
-                  <a
+                  <button
+                    type="button"
                     key={`web-${citation.url}-${index}`}
                     id={`${message.id}-src-${n}`}
-                    href={citation.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Open this web page in a new tab"
+                    onClick={() => onOpenSource(citation, n)}
+                    title="Preview this web source"
                     className={[
                       "block w-full rounded-xl border px-3 py-2.5 text-left transition duration-300",
-                      highlighted === n
+                      highlighted === n ||
+                      activeSourceKey === `web:${citation.url}:${n}`
                         ? "brand-wash border-brand-400/60"
                         : "surface-card border-white/[0.07] bg-white/[0.02] hover:border-white/[0.16] hover:bg-white/[0.04]",
                     ].join(" ")}
@@ -922,7 +1093,7 @@ function AssistantMessage({
                         {citation.snippet.trim()}
                       </p>
                     )}
-                  </a>
+                  </button>
                 )
               }
 
