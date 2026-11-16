@@ -42,7 +42,11 @@ CHUNKS = [
 state = {"found": True, "model": ["Biaya ", "Rp45.000 ", "[S", "1]."]}
 
 
-def fake_stream(question, context, llm=None):
+seen = {}
+
+
+def fake_stream(question, context, llm=None, web=False):
+    seen.update(context=context, web=web)
     yield from state["model"]
 
 
@@ -96,5 +100,72 @@ try:
     check("empty question raises", False)
 except ValueError:
     check("empty question raises", True)
+
+# --- Web search
+WEB = [
+    {
+        "kind": "web",
+        "url": "https://contoh.id/lomba",
+        "title": "Lomba Esai - Situs Resmi",
+        "text": "Biaya pendaftaran lomba esai di situs resmi adalah Rp50.000 per orang.",
+        "similarity": 0.7,
+    }
+]
+web_state = {"calls": 0, "passages": WEB, "status": {"used": True, "status": "ok", "query": "biaya lomba esai"}, "fail": False}
+
+
+def fake_gather(question, search_query, results, llm=None):
+    web_state["calls"] += 1
+    if web_state["fail"]:
+        raise RuntimeError("boom")
+    return list(web_state["passages"]), dict(web_state["status"])
+
+
+chat_mod.gather_web = fake_gather
+
+# Off: the web is never touched.
+state.update(found=True, model=["Biaya ", "Rp45.000 ", "[S1]."])
+done = list(chat_mod.chat_stream("Berapa biaya pendaftaran?", **ARGS))[-1][1]
+check("web off: provider not called", web_state["calls"] == 0)
+check("web off: no web key, prompt in document mode", "web" not in done and seen["web"] is False, done.keys())
+
+# On: document and web sources in one answer.
+state.update(model=["Menurut dokumen biaya pendaftaran Rp45.000 per orang [S1]. ", "Situs resmi menyebut biaya pendaftaran lomba esai Rp50.000 per orang [S2]."])
+events = list(chat_mod.chat_stream("Berapa biaya pendaftaran?", web_search=True, **ARGS))
+done = events[-1][1]
+check("web on: provider called once", web_state["calls"] == 1)
+# Only the first chunk passes the similarity filter, so the web page is S2.
+check("web on: web passage numbered after the chunks", "[S2]" in seen["context"] and "https://contoh.id/lomba" in seen["context"] and "Web page" in seen["context"], seen["context"])
+check("web on: prompt in web mode", seen["web"] is True)
+check("web on: answer renumbered", "[1]" in done["answer"] and "[2]" in done["answer"] and "[S" not in done["answer"], done["answer"])
+kinds = [c["kind"] for c in done["citations"]]
+check("web on: one citation of each kind", kinds == ["document", "web"], done["citations"])
+w = done["citations"][1]
+check("web citation fields", w["source"] == 2 and w["url"] == "https://contoh.id/lomba" and w["title"] == "Lomba Esai - Situs Resmi" and w["snippet"] and "document_id" not in w, w)
+check("web on: status reported", done["web"] == {"used": True, "status": "ok", "query": "biaya lomba esai"}, done["web"])
+check("web on: JSON-encodable", json.dumps(jsonable_encoder(done)))
+
+# A web label the page does not support is dropped.
+state.update(model=["Jam operasional kantor adalah pukul 08.00 sampai 16.00 [S2]."])
+done = list(chat_mod.chat_stream("Jam berapa kantor buka?", web_search=True, **ARGS))[-1][1]
+check("web on: unsupported web citation dropped", all(c["kind"] == "document" for c in done["citations"]), done["citations"])
+
+# The web part fails: the documents still answer.
+web_state["fail"] = True
+state.update(model=["Biaya ", "Rp45.000 ", "[S1]."])
+done = list(chat_mod.chat_stream("Berapa biaya pendaftaran?", web_search=True, **ARGS))[-1][1]
+check("web down: answered from documents", "[1]" in done["answer"] and len(done["citations"]) == 1, done)
+check("web down: reported unavailable", done["web"]["status"] == "unavailable" and done["web"]["used"] is False and seen["web"] is False, done["web"])
+web_state["fail"] = False
+
+# Documents have nothing, the web does.
+state.update(found=False, model=["Situs resmi menyebut biaya pendaftaran lomba esai Rp50.000 per orang [S1]."])
+done = list(chat_mod.chat_stream("Berapa biaya pendaftaran?", web_search=True, **ARGS))[-1][1]
+check("web only: answered from the web", [c["kind"] for c in done["citations"]] == ["web"] and "[1]" in done["answer"], done)
+
+# Neither has anything.
+web_state.update(passages=[], status={"used": False, "status": "no_results", "query": "q"})
+events = list(chat_mod.chat_stream("Berapa biaya pendaftaran?", web_search=True, **ARGS))
+check("nothing anywhere: not found, web status kept", [n for n, _ in events] == ["done"] and events[0][1]["citations"] == [] and events[0][1]["web"]["status"] == "no_results", events)
 
 print("all chat stream checks passed")

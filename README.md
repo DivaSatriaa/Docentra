@@ -46,6 +46,7 @@ seconds instead of taken on trust.
 - **Hybrid search.** Retrieval combines pgvector semantic search with Postgres full-text search, merged by reciprocal rank fusion.
 - **Document scoping.** Ask across the whole workspace or pin a question to specific documents. Naming a file in the question is detected automatically.
 - **Collections.** Group documents into collections and ask a whole collection at once, optionally adding single documents to the scope.
+- **Web search.** Turn on Web Search to check your documents against the internet: the answer cites document and web sources side by side and says where they agree or differ. Put a URL in the question to compare against that page. Uses DuckDuckGo, no API key; only your question and a short keyword query leave your machine.
 - **Bring your own model.** Run fully local with [Ollama](https://ollama.com), or use OpenAI, Anthropic, Gemini and any OpenAI-compatible provider (DeepSeek, Groq, OpenRouter, Mistral, Together, xAI). API keys stay in the browser.
 - **Bilingual.** Answers follow the language of the question (Indonesian or English), backed by a multilingual embedding model.
 - **Workspace UI.** Persistent conversations with auto-generated titles, a documents library, history, and a <kbd>Ctrl</kbd> + <kbd>K</kbd> command palette.
@@ -160,7 +161,7 @@ Docentra/
 - [x] Local and hosted model support
 - [x] Per-claim citations with an in-app source viewer
 - [x] Collections for grouping documents
-- [ ] Web search
+- [x] Web search
 - [ ] Authentication and multiple users
 - [ ] Production deployment
 

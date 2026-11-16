@@ -98,3 +98,52 @@ check("label dump is cut down to the supporting source", result.cited == [5], re
 check("label dump leaves one marker", result.answer.endswith("2026 [S5]."), result.answer)
 
 print("all citation checks passed")
+
+# --- Web sources are verified strictly (strict = their source numbers).
+MIXED = [
+    "Biaya pendaftaran lomba esai adalah Rp45.000 per orang untuk gelombang dua.",
+    "Pendaftaran lomba esai ditutup pada 2 Desember 2026 menurut situs resmi panitia.",
+    "Resep nasi goreng: bawang putih, kecap manis, dan telur dadar.",
+]
+
+answer = "Biaya pendaftaran lomba esai adalah Rp45.000 per orang [S1][S3]."
+result = resolve_citations(answer, MIXED, [0.8, 0.4, 0.3], strict={2, 3})
+check("web: unsupported web label dropped", result.cited == [1] and "[S3]" not in result.answer, result.answer)
+
+answer = "Pendaftaran lomba esai ditutup pada 2 Desember 2026 [S2]."
+result = resolve_citations(answer, MIXED, [0.8, 0.4, 0.3], strict={2, 3})
+check("web: supported web label kept", result.cited == [2] and "[S2]" in result.answer, result.answer)
+
+# The only label is a web one the page doesn't support, while a document
+# plainly says it: the label is dropped, not turned into a document label.
+answer = "Biaya pendaftaran lomba esai adalah Rp45.000 per orang [S3]."
+result = resolve_citations(answer, MIXED, [0.8, 0.4, 0.3], strict={2, 3})
+check("web: wrong web label is not moved to a document", result.cited == [] and "[S" not in result.answer, result.answer)
+
+# A document label is never replaced by a web source.
+answer = "Pendaftaran lomba esai ditutup pada 2 Desember 2026 menurut situs resmi [S1]."
+result = resolve_citations(answer, MIXED, [0.8, 0.4, 0.3], strict={2, 3})
+check("web: document label is not moved to a web source", 2 not in result.cited and 3 not in result.cited, result.cited)
+
+# A paraphrase nothing verifies: a document label is kept on trust, a web one is not.
+answer = "The entry fee is forty-five thousand [S1]. The deadline is early December [S2]."
+result = resolve_citations(answer, MIXED, [0.8, 0.4, 0.3], strict={2, 3})
+check("web: unverifiable web label dropped, document one kept", result.cited == [1], (result.cited, result.answer))
+
+# A sentence comparing both keeps one label of each kind.
+answer = "Biaya pendaftaran Rp45.000 per orang, dan pendaftaran ditutup 2 Desember 2026 menurut situs resmi [S1][S2]."
+result = resolve_citations(answer, MIXED, [0.8, 0.4, 0.3], strict={2, 3})
+check("web: comparison keeps both kinds", result.cited == [1, 2], result.cited)
+
+# Nothing cited at all: content attribution and the closest-source fallback
+# only ever pick documents.
+answer = "Pendaftaran lomba esai ditutup pada 2 Desember 2026 menurut situs resmi panitia."
+result = resolve_citations(answer, MIXED, [0.2, 0.9, 0.3], strict={2, 3})
+check("web: uncited text is never attributed to the web", all(n == 1 for n in result.cited), result.cited)
+
+# Without strict sources nothing changes.
+answer = "Biaya pendaftaran lomba esai adalah Rp45.000 per orang [S3]."
+result = resolve_citations(answer, MIXED, [0.8, 0.4, 0.3])
+check("no strict: wrong label still moved to the right chunk", result.cited == [1], result.cited)
+
+print("all web citation checks passed")

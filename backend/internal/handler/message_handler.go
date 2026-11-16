@@ -34,6 +34,9 @@ type createMessageRequest struct {
 	// Optional: restrict the search to this collection's documents, plus
 	// any document_ids.
 	CollectionID string `json:"collection_id,omitempty"`
+
+	// Optional: also check the documents against the web.
+	WebSearch bool `json:"web_search,omitempty"`
 }
 
 // chatErrorStatus maps an error returned before an answer started to an HTTP
@@ -68,6 +71,7 @@ func (h *MessageHandler) Create(c *gin.Context) {
 		req.Model,
 		req.DocumentIDs,
 		req.CollectionID,
+		req.WebSearch,
 	)
 	if err != nil {
 		c.JSON(chatErrorStatus(err), gin.H{
@@ -127,6 +131,7 @@ func (h *MessageHandler) CreateStream(c *gin.Context) {
 		req.Model,
 		req.DocumentIDs,
 		req.CollectionID,
+		req.WebSearch,
 		emit,
 	)
 	if err == nil {

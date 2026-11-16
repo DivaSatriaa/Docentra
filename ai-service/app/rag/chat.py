@@ -21,6 +21,7 @@ from app.rag.retriever import (
 )
 from app.rag.snippet import best_snippet
 from app.rag.stream import hide_labels
+from app.rag.web import gather as gather_web
 
 
 # Chunks below this cosine similarity are never used.
@@ -93,6 +94,7 @@ def chat_stream(
     collection_id: str | None = None,
     top_k: int = 5,
     llm: dict | None = None,
+    web_search: bool = False,
 ) -> Iterator[tuple[str, dict]]:
     question = question.strip()
 
@@ -171,25 +173,48 @@ def chat_stream(
         scope = []
         document_ids = None
 
-    if not results:
-        yield "done", {
+    # The web is a second source next to the documents, only on request.
+    # Whatever goes wrong there, the documents still answer.
+    web_results: list[dict] = []
+    web_status: dict | None = None
+    if web_search:
+        try:
+            web_results, web_status = gather_web(question, search_query, results, llm)
+        except Exception:
+            web_results = []
+            web_status = {"used": False, "status": "unavailable", "query": ""}
+
+    def with_web(payload: dict) -> dict:
+        if web_status is not None:
+            payload["web"] = web_status
+        return payload
+
+    if not results and not web_results:
+        yield "done", with_web({
             "answer": not_found_message(question),
             "citations": [],
             "search_query": search_query,
             "scope": scope,
-        }
+        })
         return
 
     # Read whole documents when they are small enough: the scoped ones, or
     # the one document most hits came from.
-    full_ids = document_ids or (
-        [doc] if (doc := _dominant_document(results)) else None
-    )
+    full_ids = None
+    if results:
+        full_ids = document_ids or (
+            [doc] if (doc := _dominant_document(results)) else None
+        )
     if full_ids and not collection_id:
         if scope_text_length(full_ids) <= FULL_CONTEXT_CHARS:
             full = document_chunks(query_embedding, full_ids)
             if full:
                 results = full
+
+    # One numbered list: document chunks first, then web passages.
+    document_count = len(results)
+    results = results + web_results
+    web_numbers = set(range(document_count + 1, len(results) + 1))
 
     context = build_context(results)
 
@@ -200,7 +225,9 @@ def chat_stream(
     def raw_deltas():
         # closing(): if the consumer stops early, the provider connection is
         # closed right away instead of whenever the garbage collector runs.
-        with closing(generate_answer_stream(question, context, llm)) as pieces:
+        with closing(
+            generate_answer_stream(question, context, llm, web=bool(web_results))
+        ) as pieces:
             for piece in pieces:
                 raw.append(piece)
                 yield piece
@@ -223,6 +250,7 @@ def chat_stream(
             answer,
             chunk_texts,
             [result["similarity"] for result in results],
+            strict=web_numbers,
         )
         answer, cited, claims = resolved.answer, resolved.cited, resolved.claims
 
@@ -238,9 +266,27 @@ def chat_stream(
             search_query,
             chunk_texts,
         )
+        if old in web_numbers:
+            citations.append(
+                {
+                    "source": mapping[old],
+                    "kind": "web",
+                    "url": result["url"],
+                    "title": result["title"],
+                    "snippet": (
+                        " … ".join(highlights)
+                        if highlights
+                        else best_snippet(result["text"], search_query)
+                    ),
+                    "highlights": highlights,
+                }
+            )
+            continue
+
         citations.append(
             {
                 "source": mapping[old],
+                "kind": "document",
                 "document_id": result["document_id"],
                 "document_name": result["document_name"],
                 "page": result["page"],
@@ -255,12 +301,12 @@ def chat_stream(
             }
         )
 
-    yield "done", {
+    yield "done", with_web({
         "answer": answer,
         "citations": citations,
         "search_query": search_query,
         "scope": scope,
-    }
+    })
 
 
 def chat(
@@ -272,6 +318,7 @@ def chat(
     collection_id: str | None = None,
     top_k: int = 5,
     llm: dict | None = None,
+    web_search: bool = False,
 ) -> dict:
     result: dict = {}
 
@@ -283,6 +330,7 @@ def chat(
         collection_id=collection_id,
         top_k=top_k,
         llm=llm,
+        web_search=web_search,
     ):
         if event == "done":
             result = payload

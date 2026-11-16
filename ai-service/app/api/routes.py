@@ -55,6 +55,9 @@ class ChatRequest(BaseModel):
     collection_id: str | None = None
     llm: LLMConfig | None = None
 
+    # Also check the documents against the web.
+    web_search: bool = False
+
     top_k: int = Field(
         default=5,
         ge=1,
@@ -107,6 +110,7 @@ async def chat_route(
             collection_id=request.collection_id,
             top_k=request.top_k,
             llm=request.llm.model_dump() if request.llm else None,
+            web_search=request.web_search,
         )
 
         return result
@@ -146,6 +150,7 @@ def _chat_events(request: ChatRequest):
             collection_id=request.collection_id,
             top_k=request.top_k,
             llm=request.llm.model_dump() if request.llm else None,
+            web_search=request.web_search,
         )
     except Exception as error:
         yield "error", {"message": str(error) or type(error).__name__}

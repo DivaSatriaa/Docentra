@@ -1,5 +1,21 @@
+/** What happened with the web search, when one was requested. */
+export type WebStatus = {
+  used: boolean
+  status: "ok" | "unavailable" | "no_results"
+  /** Keywords sent to the search provider. */
+  query: string
+  /** Address the user put in the question, and the one actually read. */
+  requested_url?: string
+  used_url?: string | null
+}
+
 export type Citation = {
   source?: number
+  /** Missing on older messages: a document. */
+  kind?: "document" | "web"
+  /** Web sources only. */
+  url?: string
+  title?: string
   document_id: string
   document_name: string
   page: number
@@ -14,6 +30,7 @@ export type StreamDonePayload = {
   citations: Citation[]
   search_query: string
   scope: string[]
+  web?: WebStatus
   message_id?: string
 }
 

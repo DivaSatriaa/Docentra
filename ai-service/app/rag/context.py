@@ -8,6 +8,17 @@ def build_context(results: list[dict]) -> str:
     sections = []
 
     for index, result in enumerate(results, start=1):
+        if result.get("kind") == "web":
+            sections.append(
+                f"""[S{index}]
+Web page: {result["title"]}
+Address: {result["url"]}
+
+{result["text"]}
+"""
+            )
+            continue
+
         sections.append(
             f"""[S{index}]
 Document: {result["document_name"]}

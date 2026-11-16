@@ -102,16 +102,24 @@ type ChatRequest struct {
 	CollectionID string               `json:"collection_id,omitempty"`
 	TopK         int                  `json:"top_k"`
 	LLM          *LLMConfig           `json:"llm,omitempty"`
+	// Also check the documents against the web.
+	WebSearch bool `json:"web_search,omitempty"`
 }
 
 type Citation struct {
-	Source       int     `json:"source,omitempty"`
-	Similarity   float64 `json:"similarity,omitempty"`
-	DocumentID   string  `json:"document_id"`
-	DocumentName string  `json:"document_name"`
-	Page         int     `json:"page"`
-	ChunkID      string  `json:"chunk_id"`
-	Snippet      string  `json:"snippet"`
+	Source     int     `json:"source,omitempty"`
+	Similarity float64 `json:"similarity,omitempty"`
+	// "document" or "web". Older stored citations have none: a document.
+	Kind string `json:"kind,omitempty"`
+	// Web sources only.
+	URL   string `json:"url,omitempty"`
+	Title string `json:"title,omitempty"`
+	// Document sources only (empty for web sources).
+	DocumentID   string `json:"document_id"`
+	DocumentName string `json:"document_name"`
+	Page         int    `json:"page"`
+	ChunkID      string `json:"chunk_id"`
+	Snippet      string `json:"snippet"`
 	// Exact passages of the document the answer relied on, for highlighting.
 	Highlights []string `json:"highlights,omitempty"`
 }
@@ -121,6 +129,8 @@ type ChatResponse struct {
 	Citations   []Citation `json:"citations"`
 	SearchQuery string     `json:"search_query"`
 	Scope       []string   `json:"scope"`
+	// What happened with the web search, when one was requested.
+	Web json.RawMessage `json:"web,omitempty"`
 }
 
 func (c *AIClient) Chat(

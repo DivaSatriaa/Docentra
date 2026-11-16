@@ -8,6 +8,7 @@ certifi==2026.10.23
 charset-normalizer==3.5.2
 click==8.4.2
 cloudpickle==3.1.2
+ddgs==9.16.1
 et_xmlfile==2.0.0
 fastapi==0.141.1
 filelock==4.2.4
@@ -32,8 +33,9 @@ openpyxl==3.1.5
 packaging==26.3
 pgvector==0.5.1
 pillow==13.0.0
-psycopg==3.3.8
+primp==2.0.1
 psycopg-binary==3.3.8
+psycopg==3.3.8
 pydantic==2.13.4
 pydantic_core==2.46.4
 Pygments==2.21.0

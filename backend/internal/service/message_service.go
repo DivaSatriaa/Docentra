@@ -132,6 +132,7 @@ func (s *MessageService) prepareChat(
 	llm *client.LLMConfig,
 	documentIDs []string,
 	collectionID string,
+	webSearch bool,
 ) (string, client.ChatRequest, *model.Message, error) {
 	conversationID = strings.TrimSpace(conversationID)
 	content = strings.TrimSpace(content)
@@ -202,6 +203,7 @@ func (s *MessageService) prepareChat(
 		TopK:        8,
 		LLM:         llm,
 		DocumentIDs: documentIDs,
+		WebSearch:   webSearch,
 	}
 
 	return conversationID, aiRequest, userMessage, nil
@@ -238,6 +240,7 @@ func (s *MessageService) Chat(
 	llm *client.LLMConfig,
 	documentIDs []string,
 	collectionID string,
+	webSearch bool,
 ) (*client.ChatResponse, *model.Message, error) {
 	conversationID, aiRequest, userMessage, err := s.prepareChat(
 		ctx,
@@ -246,6 +249,7 @@ func (s *MessageService) Chat(
 		llm,
 		documentIDs,
 		collectionID,
+		webSearch,
 	)
 	if err != nil {
 		return nil, nil, err
@@ -286,6 +290,7 @@ func (s *MessageService) ChatStream(
 	llm *client.LLMConfig,
 	documentIDs []string,
 	collectionID string,
+	webSearch bool,
 	emit func(client.StreamEvent) error,
 ) error {
 	conversationID, aiRequest, _, err := s.prepareChat(
@@ -295,6 +300,7 @@ func (s *MessageService) ChatStream(
 		llm,
 		documentIDs,
 		collectionID,
+		webSearch,
 	)
 	if err != nil {
 		return err

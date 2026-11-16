@@ -192,8 +192,15 @@ def resolve_citations(
     answer: str,
     chunk_texts: list[str],
     similarities: list[float] | None = None,
+    strict: set[int] | None = None,
 ) -> Resolved:
-    """Check the answer's source labels against the chunks and fix them up."""
+    """Check the answer's source labels against the chunks and fix them up.
+
+    `strict` holds the source numbers that are web pages. Their labels are
+    only kept when the page text supports the sentence: never on trust, and
+    never by moving a label between a document and a web page.
+    """
+    strict = strict or set()
     max_source = len(chunk_texts)
     chunk_tokens = [_tokens(text) for text in chunk_texts]
 
@@ -253,15 +260,23 @@ def resolve_citations(
                 for n in numbers[i]
                 if scores[n - 1] > 0 and scores[n - 1] >= SUPPORT_RATIO * scores[best]
             ]
+            trusted = [n for n in numbers[i] if n not in strict]
             if supported:
                 chosen = supported
-            elif confident:
+            elif not trusted:
+                # Only web labels, and the pages don't say this.
+                chosen = []
+            elif confident and best + 1 not in strict:
                 # Every label is wrong, and another chunk plainly says this.
                 chosen = [best + 1]
             else:
                 # Can't verify either way (paraphrase, other language).
-                chosen = numbers[i]
-        elif confident and len(resolved.cited) < MAX_ATTRIBUTED:
+                chosen = trusted
+        elif (
+            confident
+            and best + 1 not in strict
+            and len(resolved.cited) < MAX_ATTRIBUTED
+        ):
             # The model cited nothing at all: attribute by content.
             chosen = [best + 1]
         else:
@@ -273,8 +288,10 @@ def resolve_citations(
             keep(n, text)
 
     if not resolved.cited and not has_markers and similarities:
-        # Nothing matched by content either: show the closest source.
-        resolved.cited = [max(range(max_source), key=lambda j: similarities[j]) + 1]
+        # Nothing matched by content either: show the closest document.
+        documents = [j for j in range(max_source) if j + 1 not in strict]
+        if documents:
+            resolved.cited = [max(documents, key=lambda j: similarities[j]) + 1]
 
     parts[0::2] = pieces
     rewritten = "".join(parts)

@@ -36,7 +36,11 @@ import Sparkle from "../ui/Sparkle"
 import { AmbientGlow } from "../ui/Page"
 import { useToast } from "../ui/Toast"
 import { API_V1 } from "../../lib/api"
-import { streamMessage, type Citation } from "../../lib/chatStream"
+import {
+  streamMessage,
+  type Citation,
+  type WebStatus,
+} from "../../lib/chatStream"
 import { documentCountLabel, type CollectionScope } from "../../lib/collections"
 import {
   formatFileSize,
@@ -84,6 +88,16 @@ type Message = {
   content: string
   citations?: Citation[]
   scope?: string[]
+  /** Only on answers received in this session; not stored. */
+  web?: WebStatus
+}
+
+function siteName(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "")
+  } catch {
+    return url
+  }
 }
 
 type ApiMessage = {
@@ -151,6 +165,8 @@ export default function MainChat({
   // Their chip above the input is only shown until then; afterwards the scope
   // button in the toolbar stands for them.
   const [sentScopeKeys, setSentScopeKeys] = useState<string[]>([])
+  // Also check the documents against the web. Off for every new chat.
+  const [webSearch, setWebSearch] = useState(false)
   const [activeSource, setActiveSource] = useState<ViewerSource | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -259,6 +275,7 @@ export default function MainChat({
           model: toModelPayload(modelSettings),
           document_ids: selectedDocIds.length > 0 ? selectedDocIds : undefined,
           collection_id: selectedCollection?.id,
+          web_search: webSearch || undefined,
         },
         {
           onDelta: (delta) => {
@@ -293,6 +310,7 @@ export default function MainChat({
                   content: payload.answer,
                   citations: payload.citations,
                   scope: payload.scope,
+                  web: payload.web,
                 },
               ])
             } else {
@@ -305,6 +323,7 @@ export default function MainChat({
                         content: payload.answer,
                         citations: payload.citations,
                         scope: payload.scope,
+                        web: payload.web,
                       }
                     : m,
                 ),
@@ -383,7 +402,9 @@ export default function MainChat({
     )
   }
 
-  const waitingLabel = selectedCollection
+  const waitingLabel = webSearch
+    ? "Searching your documents and the web..."
+    : selectedCollection
     ? `Reading collection ${selectedCollection.name}${
         selectedDocIds.length > 0
           ? ` + ${documentCountLabel(selectedDocIds.length)}`
@@ -446,15 +467,21 @@ export default function MainChat({
           />
           <button
             type="button"
-            disabled
-            title="Web search is coming soon"
-            className="hidden h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] text-white/30 md:flex"
+            disabled={isLoading}
+            aria-pressed={webSearch}
+            onClick={() => setWebSearch((value) => !value)}
+            title={
+              webSearch
+                ? "Web search is on: your question and short keywords from your documents are sent to DuckDuckGo"
+                : "Also check your documents against the web (sends your question and short keywords from your documents to DuckDuckGo)"
+            }
+            className={[
+              "flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition hover:bg-white/[0.06] hover:text-white disabled:opacity-40",
+              webSearch ? "icon-tile" : "text-white/55",
+            ].join(" ")}
           >
             <Globe2 size={14} />
-            Web Search
-            <span className="rounded bg-white/[0.06] px-1 py-px text-[9.5px] font-medium uppercase tracking-wide text-white/35">
-              Soon
-            </span>
+            <span className="hidden md:inline">Web Search</span>
           </button>
         </>
       }
@@ -810,6 +837,25 @@ function AssistantMessage({
           </p>
         )}
 
+        {message.web && (
+          <p className="mt-3 flex items-start gap-1.5 text-[11.5px] leading-5 text-white/35">
+            <Globe2 size={12} className="mt-1 shrink-0" />
+            <span className="min-w-0 break-words">
+              {message.web.status === "unavailable"
+                ? "Web search was unavailable. Answered from your documents only."
+                : message.web.status === "no_results"
+                  ? `Nothing relevant found on the web${message.web.query ? ` for: ${message.web.query}` : ""}. Answered from your documents only.`
+                  : `Searched the web for: ${message.web.query}`}
+              {message.web.requested_url &&
+                (message.web.used_url === message.web.requested_url
+                  ? ` · Read ${message.web.used_url}`
+                  : message.web.used_url
+                    ? ` · Couldn't open ${message.web.requested_url}; read ${message.web.used_url} from your documents instead.`
+                    : ` · Couldn't open ${message.web.requested_url}.`)}
+            </span>
+          </p>
+        )}
+
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           {citations.length > 0 && (
             <button
@@ -842,6 +888,44 @@ function AssistantMessage({
           <div className="mt-2.5 grid animate-rise-in gap-2 sm:grid-cols-2">
             {citations.map((citation, index) => {
               const n = citation.source ?? index + 1
+
+              if (citation.kind === "web" && citation.url) {
+                return (
+                  <a
+                    key={`web-${citation.url}-${index}`}
+                    id={`${message.id}-src-${n}`}
+                    href={citation.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Open this web page in a new tab"
+                    className={[
+                      "block w-full rounded-xl border px-3 py-2.5 text-left transition duration-300",
+                      highlighted === n
+                        ? "brand-wash border-brand-400/60"
+                        : "surface-card border-white/[0.07] bg-white/[0.02] hover:border-white/[0.16] hover:bg-white/[0.04]",
+                    ].join(" ")}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-md bg-brand-500/20 px-1 text-[10.5px] font-semibold text-brand-300">
+                        {n}
+                      </span>
+                      <Globe2 size={13} className="shrink-0 text-sky-300/80" />
+                      <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-white/75">
+                        {citation.title || siteName(citation.url)}
+                      </span>
+                      <span className="max-w-[40%] shrink-0 truncate text-[11px] text-white/35">
+                        {siteName(citation.url)}
+                      </span>
+                    </div>
+                    {citation.snippet?.trim() && (
+                      <p className="mt-1.5 line-clamp-3 text-[11.5px] leading-5 text-white/40">
+                        {citation.snippet.trim()}
+                      </p>
+                    )}
+                  </a>
+                )
+              }
+
               return (
                 <button
                   type="button"
