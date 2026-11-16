@@ -30,6 +30,23 @@ type createMessageRequest struct {
 
 	// Optional: restrict the search to these documents.
 	DocumentIDs []string `json:"document_ids,omitempty"`
+
+	// Optional: restrict the search to this collection's documents, plus
+	// any document_ids.
+	CollectionID string `json:"collection_id,omitempty"`
+}
+
+// chatErrorStatus maps an error returned before an answer started to an HTTP
+// status.
+func chatErrorStatus(err error) int {
+	switch err.Error() {
+	case "conversation not found", "collection not found":
+		return http.StatusNotFound
+	case "collection has no documents":
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
+	}
 }
 
 func (h *MessageHandler) Create(c *gin.Context) {
@@ -50,16 +67,10 @@ func (h *MessageHandler) Create(c *gin.Context) {
 		req.Content,
 		req.Model,
 		req.DocumentIDs,
+		req.CollectionID,
 	)
 	if err != nil {
-		if err.Error() == "conversation not found" {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "conversation not found",
-			})
-			return
-		}
-
-		c.JSON(http.StatusInternalServerError, gin.H{
+		c.JSON(chatErrorStatus(err), gin.H{
 			"error": err.Error(),
 		})
 		return
@@ -115,6 +126,7 @@ func (h *MessageHandler) CreateStream(c *gin.Context) {
 		req.Content,
 		req.Model,
 		req.DocumentIDs,
+		req.CollectionID,
 		emit,
 	)
 	if err == nil {
@@ -126,14 +138,7 @@ func (h *MessageHandler) CreateStream(c *gin.Context) {
 		return
 	}
 
-	if err.Error() == "conversation not found" {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "conversation not found",
-		})
-		return
-	}
-
-	c.JSON(http.StatusInternalServerError, gin.H{
+	c.JSON(chatErrorStatus(err), gin.H{
 		"error": err.Error(),
 	})
 }

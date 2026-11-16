@@ -31,3 +31,4 @@ __pycache__/
 # dev.sh state and logs
 .dev/
 graphify-out/
+CLAUDE.md

@@ -1,4 +1,5 @@
 import {
+  FolderOpen,
   AlertCircle,
   ArrowUp,
   Check,
@@ -36,6 +37,7 @@ import { AmbientGlow } from "../ui/Page"
 import { useToast } from "../ui/Toast"
 import { API_V1 } from "../../lib/api"
 import { streamMessage, type Citation } from "../../lib/chatStream"
+import { documentCountLabel, type CollectionScope } from "../../lib/collections"
 import {
   formatFileSize,
   type WorkspaceDocument,
@@ -100,6 +102,9 @@ interface MainChatProps {
   onOpenDocuments: () => void
   selectedDocIds: string[]
   onChangeSelectedDocIds: (ids: string[]) => void
+  /** Collection the next question is limited to, on top of the ticked documents. */
+  selectedCollection: CollectionScope | null
+  onChangeSelectedCollection: (scope: CollectionScope | null) => void
   /** Ready documents, newest first. */
   recentDocuments: WorkspaceDocument[]
   onDocumentsChanged: () => void
@@ -126,12 +131,15 @@ export default function MainChat({
   onOpenDocuments,
   selectedDocIds,
   onChangeSelectedDocIds,
+  selectedCollection,
+  onChangeSelectedCollection,
   recentDocuments,
   onDocumentsChanged,
   onTitleChanged,
   onMessageCountChange,
   onPromptSent,
 }: MainChatProps) {
+  const toast = useToast()
   const [question, setQuestion] = useState("")
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -139,6 +147,10 @@ export default function MainChat({
   const [isLoadingHistory, setIsLoadingHistory] = useState(true)
   const [error, setError] = useState("")
   const [failedQuestion, setFailedQuestion] = useState<string | null>(null)
+  // Documents and collections already sent with a question in this chat.
+  // Their chip above the input is only shown until then; afterwards the scope
+  // button in the toolbar stands for them.
+  const [sentScopeKeys, setSentScopeKeys] = useState<string[]>([])
   const [activeSource, setActiveSource] = useState<ViewerSource | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -229,6 +241,13 @@ export default function MainChat({
     ])
     setQuestion("")
     setIsLoading(true)
+    setSentScopeKeys((keys) => [
+      ...new Set([
+        ...keys,
+        ...selectedDocIds,
+        ...(selectedCollection ? [`collection:${selectedCollection.id}`] : []),
+      ]),
+    ])
     onMessageCountChange?.(messages.length + 1)
     onPromptSent?.()
 
@@ -239,6 +258,7 @@ export default function MainChat({
           content: trimmed,
           model: toModelPayload(modelSettings),
           document_ids: selectedDocIds.length > 0 ? selectedDocIds : undefined,
+          collection_id: selectedCollection?.id,
         },
         {
           onDelta: (delta) => {
@@ -309,6 +329,24 @@ export default function MainChat({
       setMessages((current) =>
         current.filter((m) => m.id !== userId && m.id !== partialId),
       )
+
+      // The selected collection was deleted or emptied meanwhile: nothing was
+      // saved, so hand the question back and drop the stale scope.
+      const reason = requestError instanceof Error ? requestError.message : ""
+      const collectionGone = reason.includes("collection not found")
+      if (collectionGone || reason.includes("collection has no documents")) {
+        setQuestion(trimmed)
+        onChangeSelectedCollection(null)
+        onMessageCountChange?.(messages.length)
+        toast(
+          collectionGone
+            ? "That collection no longer exists. Scope cleared."
+            : "That collection is empty. Scope cleared.",
+          "error",
+        )
+        return
+      }
+
       setFailedQuestion(trimmed)
       setError("Docentra AI couldn't answer. Check that the AI service is running.")
     } finally {
@@ -345,6 +383,16 @@ export default function MainChat({
     )
   }
 
+  const waitingLabel = selectedCollection
+    ? `Reading collection ${selectedCollection.name}${
+        selectedDocIds.length > 0
+          ? ` + ${documentCountLabel(selectedDocIds.length)}`
+          : ""
+      }...`
+    : selectedDocIds.length > 0
+      ? `Reading ${selectedDocIds.length} selected document${selectedDocIds.length > 1 ? "s" : ""}...`
+      : "Searching your documents..."
+
   const composer = (
     <Composer
       inputRef={inputRef}
@@ -353,14 +401,24 @@ export default function MainChat({
       onSend={() => void sendMessage()}
       isLoading={isLoading}
       disabled={isLoadingHistory}
-      selectedDocuments={selectedDocIds.map(
-        (id) =>
-          recentDocuments.find((d) => d.id === id) ?? {
-            id,
-            label: "Document",
-            extension: "",
-          },
-      )}
+      hasScope={selectedDocIds.length > 0 || selectedCollection !== null}
+      newCollection={
+        selectedCollection &&
+        !sentScopeKeys.includes(`collection:${selectedCollection.id}`)
+          ? selectedCollection
+          : null
+      }
+      onRemoveCollection={() => onChangeSelectedCollection(null)}
+      newDocuments={selectedDocIds
+        .filter((id) => !sentScopeKeys.includes(id))
+        .map(
+          (id) =>
+            recentDocuments.find((d) => d.id === id) ?? {
+              id,
+              label: "Document",
+              extension: "",
+            },
+        )}
       onRemoveDocument={toggleDocument}
       tools={
         <>
@@ -376,6 +434,8 @@ export default function MainChat({
           <DocumentScopePicker
             selectedIds={selectedDocIds}
             onChange={onChangeSelectedDocIds}
+            selectedCollection={selectedCollection}
+            onChangeCollection={onChangeSelectedCollection}
             disabled={isLoading}
           />
           <ModelPicker
@@ -438,7 +498,7 @@ export default function MainChat({
           messages={messages}
           isLoading={isLoading}
           isWaiting={isLoading && streamingId === null}
-          scopeCount={selectedDocIds.length}
+          waitingLabel={waitingLabel}
           composer={composer}
           errorBanner={errorBanner}
           onOpenSource={openSource}
@@ -565,7 +625,7 @@ function ConversationView({
   messages,
   isLoading,
   isWaiting,
-  scopeCount,
+  waitingLabel,
   composer,
   errorBanner,
   onOpenSource,
@@ -575,7 +635,7 @@ function ConversationView({
   isLoading: boolean
   /** True while a request is in flight and no answer text has arrived yet. */
   isWaiting: boolean
-  scopeCount: number
+  waitingLabel: string
   composer: ReactNode
   errorBanner: ReactNode
   onOpenSource: (citation: Citation, n: number) => void
@@ -629,9 +689,7 @@ function ConversationView({
               <AssistantAvatar />
               <div className="flex items-center gap-3 pt-1.5 text-[13px] text-white/40">
                 <TypingDots />
-                {scopeCount > 0
-                  ? `Reading ${scopeCount} selected document${scopeCount > 1 ? "s" : ""}...`
-                  : "Searching your documents..."}
+                {waitingLabel}
               </div>
             </div>
           )}
@@ -840,7 +898,10 @@ function Composer({
   onSend,
   isLoading,
   disabled,
-  selectedDocuments,
+  hasScope,
+  newCollection,
+  onRemoveCollection,
+  newDocuments,
   onRemoveDocument,
   tools,
 }: {
@@ -850,7 +911,12 @@ function Composer({
   onSend: () => void
   isLoading: boolean
   disabled: boolean
-  selectedDocuments: (
+  /** True when the next question is limited to a collection or documents. */
+  hasScope: boolean
+  /** Scope items not yet sent with a question; shown as chips above the input. */
+  newCollection: CollectionScope | null
+  onRemoveCollection: () => void
+  newDocuments: (
     | WorkspaceDocument
     | { id: string; label: string; extension: string }
   )[]
@@ -875,9 +941,23 @@ function Composer({
           if (event.target === event.currentTarget) inputRef.current?.focus()
         }}
       >
-        {selectedDocuments.length > 0 && (
+        {(newCollection !== null || newDocuments.length > 0) && (
           <div className="flex flex-wrap gap-1.5 px-3 pt-3">
-            {selectedDocuments.map((doc) => {
+            {newCollection && (
+              <span className="flex max-w-[240px] animate-pop-in items-center gap-1.5 rounded-lg brand-wash border border-brand-400/30 py-1 pl-2 pr-1 text-[12px] text-white/80">
+                <FolderOpen size={14} className="shrink-0 text-brand-300" />
+                <span className="truncate">{newCollection.name}</span>
+                <button
+                  type="button"
+                  onClick={onRemoveCollection}
+                  aria-label={`Remove collection ${newCollection.name}`}
+                  className="rounded p-0.5 text-white/40 transition hover:bg-white/10 hover:text-white"
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            )}
+            {newDocuments.map((doc) => {
               const name =
                 "name" in doc ? doc.name || doc.original_name : doc.label
               return (
@@ -915,7 +995,7 @@ function Composer({
           }}
           disabled={disabled}
           placeholder={
-            selectedDocuments.length > 0
+            hasScope
               ? "Ask about the selected documents..."
               : "Ask about your documents..."
           }

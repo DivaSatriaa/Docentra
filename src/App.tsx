@@ -14,6 +14,7 @@ import { useToast } from "./components/ui/Toast"
 import BrandMark from "./components/ui/BrandMark"
 import { useModelSettings } from "./lib/modelSettings"
 import { useRecentDocuments } from "./lib/documents"
+import { documentCountLabel, type CollectionScope } from "./lib/collections"
 import {
   conversationTitle,
   createConversation,
@@ -68,6 +69,9 @@ function App() {
 
   // Documents the next question is limited to (empty = all documents).
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
+  // Collection the next question is limited to, on top of the ticked documents.
+  const [selectedCollection, setSelectedCollection] =
+    useState<CollectionScope | null>(null)
   const [documentsVersion, setDocumentsVersion] = useState(0)
   const recentDocuments = useRecentDocuments(
     documentsVersion + (page === "documents" ? 0 : 1),
@@ -168,6 +172,7 @@ function App() {
       setConversationId(created.id)
       setActiveMessageCount(0)
       setSelectedDocIds([])
+      setSelectedCollection(null)
       navigate("chat")
     } catch (error) {
       console.error("Failed to create conversation:", error)
@@ -180,6 +185,7 @@ function App() {
   function handleSelectConversation(id: string) {
     if (id !== conversationId) {
       setSelectedDocIds([])
+      setSelectedCollection(null)
       setActiveMessageCount(null)
     }
     setConversationId(id)
@@ -188,7 +194,25 @@ function App() {
 
   function handleAskDocument(documentId: string) {
     setSelectedDocIds((ids) => (ids.includes(documentId) ? ids : [...ids, documentId]))
+    // Asking one document means that document, not the collection it may be in.
+    setSelectedCollection(null)
     navigate("chat")
+  }
+
+  function handleAskCollection(scope: CollectionScope) {
+    setSelectedCollection(scope)
+    setSelectedDocIds([])
+    navigate("chat")
+  }
+
+  function handleCollectionChanged(scope: CollectionScope) {
+    setSelectedCollection((current) =>
+      current?.id === scope.id ? scope : current,
+    )
+  }
+
+  function handleCollectionDeleted(id: string) {
+    setSelectedCollection((current) => (current?.id === id ? null : current))
   }
 
   async function confirmDelete() {
@@ -200,6 +224,7 @@ function App() {
       setConversations(remaining)
       if (deleteTarget.id === conversationId) {
         setSelectedDocIds([])
+        setSelectedCollection(null)
         if (remaining.length > 0) setConversationId(remaining[0].id)
         else {
           const created = await createConversation()
@@ -297,9 +322,17 @@ function App() {
         <TopBar
           title={title}
           subtitle={
-            page === "chat" && selectedDocIds.length > 0
-              ? `· scoped to ${selectedDocIds.length} document${selectedDocIds.length > 1 ? "s" : ""}`
-              : undefined
+            page !== "chat"
+              ? undefined
+              : selectedCollection
+                ? `· scoped to collection ${selectedCollection.name}${
+                    selectedDocIds.length > 0
+                      ? ` + ${documentCountLabel(selectedDocIds.length)}`
+                      : ""
+                  }`
+                : selectedDocIds.length > 0
+                  ? `· scoped to ${documentCountLabel(selectedDocIds.length)}`
+                  : undefined
           }
           sidebarHidden={sidebarHidden}
           onShowSidebar={toggleSidebar}
@@ -326,6 +359,8 @@ function App() {
             onOpenDocuments={() => navigate("documents")}
             selectedDocIds={selectedDocIds}
             onChangeSelectedDocIds={setSelectedDocIds}
+            selectedCollection={selectedCollection}
+            onChangeSelectedCollection={setSelectedCollection}
             recentDocuments={recentDocuments}
             onDocumentsChanged={() => setDocumentsVersion((v) => v + 1)}
             onTitleChanged={() => void refreshConversations()}
@@ -335,7 +370,11 @@ function App() {
         ) : page === "documents" ? (
           <DocumentsPage onAskDocument={handleAskDocument} />
         ) : page === "collections" ? (
-          <CollectionsPage />
+          <CollectionsPage
+            onAskCollection={handleAskCollection}
+            onCollectionChanged={handleCollectionChanged}
+            onCollectionDeleted={handleCollectionDeleted}
+          />
         ) : page === "history" ? (
           <HistoryPage
             conversations={conversations}

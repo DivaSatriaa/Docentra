@@ -55,10 +55,19 @@ func Setup(
 		conversationService,
 	)
 
+	collectionRepository := repository.NewCollectionRepository(db)
+	collectionService := service.NewCollectionService(
+		collectionRepository,
+	)
+	collectionHandler := handler.NewCollectionHandler(
+		collectionService,
+	)
+
 	messageRepository := repository.NewMessageRepository(db)
 	messageService := service.NewMessageService(
 		messageRepository,
 		conversationRepository,
+		collectionRepository,
 		aiClient,
 	)
 	messageHandler := handler.NewMessageHandler(
@@ -164,6 +173,52 @@ func Setup(
 		workspaces.GET(
 			"/:id/conversations",
 			conversationHandler.List,
+		)
+
+		// =====================
+		// Collections
+		// =====================
+
+		workspaces.POST(
+			"/:id/collections",
+			collectionHandler.Create,
+		)
+
+		workspaces.GET(
+			"/:id/collections",
+			collectionHandler.List,
+		)
+	}
+
+	// =========================
+	// Collections
+	// =========================
+
+	collections := api.Group("/collections")
+	{
+		collections.GET(
+			"/:collectionId",
+			collectionHandler.Get,
+		)
+
+		collections.PATCH(
+			"/:collectionId",
+			collectionHandler.Update,
+		)
+
+		collections.DELETE(
+			"/:collectionId",
+			collectionHandler.Delete,
+		)
+
+		collections.POST(
+			"/:collectionId/documents",
+			collectionHandler.AddDocuments,
+		)
+
+		collections.DELETE(
+			"/:collectionId/documents/:documentId",
+			collectionHandler.RemoveDocument,
 		)
 	}
 

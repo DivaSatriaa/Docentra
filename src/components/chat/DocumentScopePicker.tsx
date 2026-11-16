@@ -1,6 +1,13 @@
-import { Check, FileText, Loader2, X } from "lucide-react"
+import { Check, FileText, FolderOpen, Loader2, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { API_BASE_URL, WORKSPACE_ID } from "../../lib/api"
+import {
+  documentCountLabel,
+  fetchCollection,
+  fetchCollections,
+  type Collection,
+  type CollectionScope,
+} from "../../lib/collections"
 
 type DocumentItem = {
   id: string
@@ -11,19 +18,36 @@ type DocumentItem = {
 interface DocumentScopePickerProps {
   selectedIds: string[]
   onChange: (ids: string[]) => void
+  selectedCollection: CollectionScope | null
+  onChangeCollection: (scope: CollectionScope | null) => void
   disabled?: boolean
 }
 
-/** Lets the user limit a question to specific documents. Empty = all documents. */
+const GROUP_LABEL =
+  "px-2.5 pb-1 pt-2 text-[10.5px] font-medium uppercase tracking-wide text-white/30"
+
+/**
+ * Lets the user limit a question to one collection and/or specific documents.
+ * Nothing selected = all documents.
+ */
 export default function DocumentScopePicker({
   selectedIds,
   onChange,
+  selectedCollection,
+  onChangeCollection,
   disabled = false,
 }: DocumentScopePickerProps) {
   const [open, setOpen] = useState(false)
   const [documents, setDocuments] = useState<DocumentItem[] | null>(null)
+  const [collections, setCollections] = useState<Collection[]>([])
+  // Member documents of the selected collection, once loaded.
+  const [members, setMembers] = useState<{
+    collectionId: string
+    ids: string[]
+  } | null>(null)
   const [error, setError] = useState("")
   const rootRef = useRef<HTMLDivElement>(null)
+  const collectionId = selectedCollection?.id ?? null
 
   useEffect(() => {
     if (!open) return
@@ -43,7 +67,7 @@ export default function DocumentScopePicker({
     }
   }, [open])
 
-  // Refetch each time the menu opens so new uploads show up.
+  // Refetch each time the menu opens so new uploads and collections show up.
   useEffect(() => {
     if (!open) return
 
@@ -63,10 +87,53 @@ export default function DocumentScopePicker({
         if (!cancelled) setError(err.message)
       })
 
+    fetchCollections()
+      .then((data) => {
+        if (!cancelled) setCollections(data)
+      })
+      .catch(() => {
+        // Scoping by document still works without the collections list.
+      })
+
     return () => {
       cancelled = true
     }
   }, [open])
+
+  // Load the selected collection's members (again whenever the menu opens).
+  useEffect(() => {
+    if (collectionId === null) return
+
+    let cancelled = false
+
+    fetchCollection(collectionId)
+      .then((detail) => {
+        if (cancelled) return
+        setMembers({
+          collectionId,
+          ids: detail.documents.map((document) => document.id),
+        })
+      })
+      .catch(() => {
+        // If the collection is gone, sending the question reports it.
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [collectionId, open])
+
+  const memberIds =
+    members !== null && members.collectionId === collectionId ? members.ids : null
+
+  // A ticked document that is also a member would be counted twice in the
+  // label; the collection already covers it.
+  useEffect(() => {
+    if (memberIds === null) return
+    if (selectedIds.some((id) => memberIds.includes(id))) {
+      onChange(selectedIds.filter((id) => !memberIds.includes(id)))
+    }
+  }, [memberIds, selectedIds, onChange])
 
   function toggle(id: string) {
     onChange(
@@ -76,9 +143,21 @@ export default function DocumentScopePicker({
     )
   }
 
+  function toggleCollection(collection: Collection) {
+    onChangeCollection(
+      collection.id === collectionId
+        ? null
+        : { id: collection.id, name: collection.name },
+    )
+  }
+
   const count = selectedIds.length
-  const label =
-    count === 0
+  const hasScope = count > 0 || selectedCollection !== null
+  const label = selectedCollection
+    ? count > 0
+      ? `${selectedCollection.name} + ${documentCountLabel(count)}`
+      : selectedCollection.name
+    : count === 0
       ? "All documents"
       : count === 1
         ? (documents?.find((d) => d.id === selectedIds[0])?.original_name ??
@@ -93,14 +172,17 @@ export default function DocumentScopePicker({
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="listbox"
         aria-expanded={open}
+        title={label}
         className={[
           "flex h-8 max-w-[200px] items-center gap-1.5 rounded-lg px-2.5 text-[12px] transition hover:bg-white/[0.06] hover:text-white disabled:opacity-40",
-          count > 0
-            ? "icon-tile"
-            : "text-white/55",
+          hasScope ? "icon-tile" : "text-white/55",
         ].join(" ")}
       >
-        <FileText size={14} className="shrink-0" />
+        {selectedCollection ? (
+          <FolderOpen size={14} className="shrink-0" />
+        ) : (
+          <FileText size={14} className="shrink-0" />
+        )}
         <span className="truncate">{label}</span>
       </button>
 
@@ -110,10 +192,13 @@ export default function DocumentScopePicker({
             <span className="text-[11px] text-white/40">
               Search only in...
             </span>
-            {count > 0 && (
+            {hasScope && (
               <button
                 type="button"
-                onClick={() => onChange([])}
+                onClick={() => {
+                  onChange([])
+                  onChangeCollection(null)
+                }}
                 className="flex items-center gap-1 text-[11px] text-white/45 hover:text-white"
               >
                 <X size={11} />
@@ -122,7 +207,44 @@ export default function DocumentScopePicker({
             )}
           </div>
 
-          <div className="max-h-[260px] overflow-y-auto">
+          <div className="max-h-[300px] overflow-y-auto">
+            {collections.length > 0 && (
+              <>
+                <div className={GROUP_LABEL}>Collections</div>
+                {collections.map((collection) => {
+                  const active = collection.id === collectionId
+                  const empty = collection.document_count === 0
+                  // An empty collection only makes sense with a ticked document.
+                  const blocked = empty && !active && count === 0
+
+                  return (
+                    <button
+                      key={collection.id}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      disabled={blocked}
+                      title={blocked ? "This collection has no documents" : undefined}
+                      onClick={() => toggleCollection(collection)}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] text-white/70 transition hover:bg-white/[0.05] hover:text-white disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      <FolderOpen size={13} className="shrink-0 text-white/40" />
+                      <span className="min-w-0 flex-1 truncate">
+                        {collection.name}
+                      </span>
+                      <span className="shrink-0 text-[11px] text-white/30">
+                        {empty ? "empty" : collection.document_count}
+                      </span>
+                      {active && (
+                        <Check size={13} className="shrink-0 text-brand-300" />
+                      )}
+                    </button>
+                  )
+                })}
+                <div className={GROUP_LABEL}>Documents</div>
+              </>
+            )}
+
             {error ? (
               <p className="px-2 py-4 text-center text-[12px] text-red-300/80">
                 {error}
@@ -138,7 +260,8 @@ export default function DocumentScopePicker({
               </p>
             ) : (
               documents.map((item) => {
-                const active = selectedIds.includes(item.id)
+                const isMember = memberIds?.includes(item.id) ?? false
+                const active = isMember || selectedIds.includes(item.id)
 
                 return (
                   <button
@@ -146,12 +269,23 @@ export default function DocumentScopePicker({
                     type="button"
                     role="option"
                     aria-selected={active}
+                    disabled={isMember}
                     onClick={() => toggle(item.id)}
-                    className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] text-white/70 transition hover:bg-white/[0.05] hover:text-white"
+                    className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] text-white/70 transition hover:bg-white/[0.05] hover:text-white disabled:pointer-events-none"
                   >
-                    <span className="truncate">{item.original_name}</span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {item.original_name}
+                    </span>
+                    {isMember && selectedCollection && (
+                      <span className="max-w-[110px] shrink-0 truncate text-[11px] text-white/35">
+                        in {selectedCollection.name}
+                      </span>
+                    )}
                     {active && (
-                      <Check size={13} className="shrink-0 text-brand-300" />
+                      <Check
+                        size={13}
+                        className={`shrink-0 ${isMember ? "text-brand-300/50" : "text-brand-300"}`}
+                      />
                     )}
                   </button>
                 )

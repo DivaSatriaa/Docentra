@@ -15,17 +15,20 @@ import (
 type MessageService struct {
 	repository             *repository.MessageRepository
 	conversationRepository *repository.ConversationRepository
+	collectionRepository   *repository.CollectionRepository
 	aiClient               *client.AIClient
 }
 
 func NewMessageService(
 	repository *repository.MessageRepository,
 	conversationRepository *repository.ConversationRepository,
+	collectionRepository *repository.CollectionRepository,
 	aiClient *client.AIClient,
 ) *MessageService {
 	return &MessageService{
 		repository:             repository,
 		conversationRepository: conversationRepository,
+		collectionRepository:   collectionRepository,
 		aiClient:               aiClient,
 	}
 }
@@ -55,14 +58,80 @@ func (s *MessageService) CreateUserMessage(
 	)
 }
 
-// prepareChat validates the input, loads the conversation and history, saves
-// the user message and builds the request for the AI service.
+// resolveScope returns the document ids a question is limited to. Without a
+// collection the ticked documents are used as they are. With a collection the
+// scope is its members plus the ticked documents, without duplicates; an
+// empty result is an error so the question never falls back to the whole
+// workspace.
+func resolveScope(
+	collectionID string,
+	memberIDs []string,
+	documentIDs []string,
+) ([]string, error) {
+	if collectionID == "" {
+		return documentIDs, nil
+	}
+
+	scope := make([]string, 0, len(memberIDs)+len(documentIDs))
+	seen := make(map[string]bool, len(memberIDs)+len(documentIDs))
+
+	for _, ids := range [][]string{memberIDs, documentIDs} {
+		for _, id := range ids {
+			if !seen[id] {
+				seen[id] = true
+				scope = append(scope, id)
+			}
+		}
+	}
+
+	if len(scope) == 0 {
+		return nil, fmt.Errorf("collection has no documents")
+	}
+
+	return scope, nil
+}
+
+// collectionScope resolves the scope of a question asked against a
+// collection of the given workspace.
+func (s *MessageService) collectionScope(
+	ctx context.Context,
+	workspaceID string,
+	collectionID string,
+	documentIDs []string,
+) ([]string, error) {
+	collectionID = strings.TrimSpace(collectionID)
+
+	if collectionID == "" {
+		return resolveScope("", nil, documentIDs)
+	}
+
+	collection, err := s.collectionRepository.GetByID(ctx, collectionID)
+	if err != nil {
+		return nil, err
+	}
+
+	if collection.WorkspaceID != workspaceID {
+		return nil, fmt.Errorf("collection not found")
+	}
+
+	memberIDs, err := s.collectionRepository.DocumentIDs(ctx, collection.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return resolveScope(collection.ID, memberIDs, documentIDs)
+}
+
+// prepareChat validates the input, loads the conversation and history,
+// resolves the document scope, saves the user message and builds the request
+// for the AI service. Nothing is saved when the scope is rejected.
 func (s *MessageService) prepareChat(
 	ctx context.Context,
 	conversationID string,
 	content string,
 	llm *client.LLMConfig,
 	documentIDs []string,
+	collectionID string,
 ) (string, client.ChatRequest, *model.Message, error) {
 	conversationID = strings.TrimSpace(conversationID)
 	content = strings.TrimSpace(content)
@@ -78,6 +147,16 @@ func (s *MessageService) prepareChat(
 	conversation, err := s.conversationRepository.GetByID(
 		ctx,
 		conversationID,
+	)
+	if err != nil {
+		return "", client.ChatRequest{}, nil, err
+	}
+
+	documentIDs, err = s.collectionScope(
+		ctx,
+		conversation.WorkspaceID,
+		collectionID,
+		documentIDs,
 	)
 	if err != nil {
 		return "", client.ChatRequest{}, nil, err
@@ -158,6 +237,7 @@ func (s *MessageService) Chat(
 	content string,
 	llm *client.LLMConfig,
 	documentIDs []string,
+	collectionID string,
 ) (*client.ChatResponse, *model.Message, error) {
 	conversationID, aiRequest, userMessage, err := s.prepareChat(
 		ctx,
@@ -165,6 +245,7 @@ func (s *MessageService) Chat(
 		content,
 		llm,
 		documentIDs,
+		collectionID,
 	)
 	if err != nil {
 		return nil, nil, err
@@ -204,6 +285,7 @@ func (s *MessageService) ChatStream(
 	content string,
 	llm *client.LLMConfig,
 	documentIDs []string,
+	collectionID string,
 	emit func(client.StreamEvent) error,
 ) error {
 	conversationID, aiRequest, _, err := s.prepareChat(
@@ -212,6 +294,7 @@ func (s *MessageService) ChatStream(
 		content,
 		llm,
 		documentIDs,
+		collectionID,
 	)
 	if err != nil {
 		return err

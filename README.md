@@ -45,6 +45,7 @@ seconds instead of taken on trust.
 - **Multi-format ingestion.** PDF, DOCX, PPTX, XLSX, CSV, TXT and Markdown are parsed, chunked and embedded automatically on upload.
 - **Hybrid search.** Retrieval combines pgvector semantic search with Postgres full-text search, merged by reciprocal rank fusion.
 - **Document scoping.** Ask across the whole workspace or pin a question to specific documents. Naming a file in the question is detected automatically.
+- **Collections.** Group documents into collections and ask a whole collection at once, optionally adding single documents to the scope.
 - **Bring your own model.** Run fully local with [Ollama](https://ollama.com), or use OpenAI, Anthropic, Gemini and any OpenAI-compatible provider (DeepSeek, Groq, OpenRouter, Mistral, Together, xAI). API keys stay in the browser.
 - **Bilingual.** Answers follow the language of the question (Indonesian or English), backed by a multilingual embedding model.
 - **Workspace UI.** Persistent conversations with auto-generated titles, a documents library, history, and a <kbd>Ctrl</kbd> + <kbd>K</kbd> command palette.
@@ -158,7 +159,7 @@ Docentra/
 - [x] Chat with documents, with persistent conversations
 - [x] Local and hosted model support
 - [x] Per-claim citations with an in-app source viewer
-- [ ] Collections for grouping documents
+- [x] Collections for grouping documents
 - [ ] Web search
 - [ ] Authentication and multiple users
 - [ ] Production deployment

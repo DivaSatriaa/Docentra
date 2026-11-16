@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"errors"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 )
@@ -19,5 +21,23 @@ func TestWriteSSE(t *testing.T) {
 
 	if !rec.Flushed {
 		t.Fatal("frame was not flushed")
+	}
+}
+
+func TestChatErrorStatus(t *testing.T) {
+	cases := []struct {
+		message string
+		want    int
+	}{
+		{"conversation not found", http.StatusNotFound},
+		{"collection not found", http.StatusNotFound},
+		{"collection has no documents", http.StatusBadRequest},
+		{"ai service unavailable", http.StatusInternalServerError},
+	}
+
+	for _, tc := range cases {
+		if got := chatErrorStatus(errors.New(tc.message)); got != tc.want {
+			t.Errorf("chatErrorStatus(%q) = %d, want %d", tc.message, got, tc.want)
+		}
 	}
 }
