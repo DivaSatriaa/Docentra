@@ -7,6 +7,9 @@ import (
 )
 
 type Config struct {
+	// AppHost is the address the API listens on. The default keeps it
+	// reachable from this machine only: there is no authentication.
+	AppHost string
 	AppPort string
 	AppEnv  string
 
@@ -25,6 +28,7 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
+		AppHost: getEnv("APP_HOST", "127.0.0.1"),
 		AppPort: getEnv("APP_PORT", "8080"),
 		AppEnv:  getEnv("APP_ENV", "development"),
 

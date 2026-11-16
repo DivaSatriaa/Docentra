@@ -21,7 +21,7 @@ WEB_PORT=5173
 
 # name|port|directory|command
 SERVICES=(
-  "AI service|$AI_PORT|ai-service|source .venv/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port $AI_PORT"
+  "AI service|$AI_PORT|ai-service|source .venv/bin/activate && uvicorn app.main:app --host 127.0.0.1 --port $AI_PORT"
   "Backend|$API_PORT|backend|go run ./cmd/server"
   "Frontend|$WEB_PORT|.|npm run dev"
 )

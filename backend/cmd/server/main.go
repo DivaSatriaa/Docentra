@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net"
 
 	"github.com/DivaSatriaa/Docentra/backend/internal/client"
 	"github.com/DivaSatriaa/Docentra/backend/internal/config"
@@ -25,9 +26,11 @@ func main() {
 
 	r := router.Setup(db, aiClient)
 
-	log.Printf("Docentra API running on :%s", cfg.AppPort)
+	addr := net.JoinHostPort(cfg.AppHost, cfg.AppPort)
 
-	if err := r.Run(":" + cfg.AppPort); err != nil {
+	log.Printf("Docentra API running on %s", addr)
+
+	if err := r.Run(addr); err != nil {
 		log.Fatal(err)
 	}
 }

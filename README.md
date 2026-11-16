@@ -14,9 +14,9 @@ and click any citation to jump to the highlighted passage in the original file.
 ![Go](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/Postgres_+_pgvector-4169E1?logo=postgresql&logoColor=white)
-![Status](https://img.shields.io/badge/status-active_development-c2185b)
+[![License: MIT](https://img.shields.io/badge/License-MIT-c2185b)](LICENSE)
 
-[![Buy me a coffee on Ko-fi](https://img.shields.io/badge/Buy_me_a_coffee-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/divasatria)
+[Features](#features) · [How it works](#how-it-works) · [Getting started](#getting-started) · [Privacy](#privacy-and-security) · [Support](#support)
 
 </div>
 
@@ -28,9 +28,10 @@ and click any citation to jump to the highlighted passage in the original file.
 
 ## Overview
 
-Docentra is a document intelligence workspace. Instead of digging through file
-managers, PDF readers and spreadsheets for one piece of information, you upload
-your files once and have a conversation with what is inside them.
+Docentra is a self-hosted document intelligence workspace that runs entirely on
+your own machine. Instead of digging through file managers, PDF readers and
+spreadsheets for one piece of information, you upload your files once and have
+a conversation with what is inside them.
 
 Every answer is grounded in your documents. Each claim carries a numbered
 citation, and clicking it opens the source file next to the chat, scrolled to the
@@ -52,6 +53,7 @@ seconds instead of taken on trust.
 - **Bring your own model.** Run fully local with [Ollama](https://ollama.com), or use OpenAI, Anthropic, Gemini and any OpenAI-compatible provider (DeepSeek, Groq, OpenRouter, Mistral, Together, xAI). API keys stay in the browser.
 - **Bilingual.** Answers follow the language of the question (Indonesian or English), backed by a multilingual embedding model.
 - **Workspace UI.** Persistent conversations with auto-generated titles, a documents library, history, and a <kbd>Ctrl</kbd> + <kbd>K</kbd> command palette.
+- **Storage management.** Select several documents and delete them in one go, or clear all chats or all documents from Settings.
 
 <br />
 
@@ -68,7 +70,7 @@ flowchart LR
     AI --> LLM["LLM<br/>Ollama or API provider"]
 ```
 
-1. **Ingestion.** The backend stores the uploaded file and asks the AI service to process it. The file is split into pages, chunked on sentence boundaries, embedded with `paraphrase-multilingual-MiniLM-L12-v2` and written to Postgres with pgvector.
+1. **Ingestion.** The backend stores the uploaded file and asks the AI service to process it. The file is split into pages, chunked on sentence boundaries, embedded with `paraphrase-multilingual-MiniLM-L12-v2` and written to Postgres with pgvector. This happens once per document: later questions search the stored index and never re-read the file.
 2. **Retrieval.** A question runs through vector and keyword search in parallel. The two rankings are fused, and the top chunks are numbered `[S1]`, `[S2]`, … as context for the model.
 3. **Generation.** The model answers using only that context and cites the source numbers it relied on. Citations are mapped back to documents, pages and highlight phrases, then stored with the message.
 4. **Verification.** The frontend renders citations as chips. Opening one streams the original file from the backend and highlights the cited passage with pdf.js or docx-preview.
@@ -94,15 +96,19 @@ flowchart LR
 ### First-time setup
 
 ```bash
-# 1. Environment files (the DB password must match docker-compose.yml)
+# 1. Get the code
+git clone https://github.com/DivaSatriaa/Docentra.git
+cd Docentra
+
+# 2. Environment files (the defaults match docker-compose.yml)
 cp backend/.env.example backend/.env
 cp ai-service/.env.example ai-service/.env
 
-# 2. AI service dependencies (see ai-service/requirements.txt for the CPU-only PyTorch note)
+# 3. AI service dependencies (see ai-service/requirements.txt for the CPU-only PyTorch note)
 cd ai-service && python -m venv .venv && source .venv/bin/activate \
   && pip install -r requirements.txt && cd ..
 
-# 3. Frontend dependencies
+# 4. Frontend dependencies
 npm install
 ```
 
@@ -115,7 +121,7 @@ npm install
 ./dev.sh stop      # stop the services (add --db to stop Postgres too)
 ```
 
-Open **http://localhost:5173**. Hosted models are configured in the app under **Settings**.
+Open **http://localhost:5173**. Hosted models, your display name and storage are managed in the app under **Settings**.
 
 <details>
 <summary>Running each service manually</summary>
@@ -125,7 +131,7 @@ docker compose up -d                                  # Postgres + pgvector
 cd backend && go run ./cmd/migrate up                 # database migrations
 cd backend && go run ./cmd/server                     # API         :8080
 cd ai-service && source .venv/bin/activate \
-  && uvicorn app.main:app --host 0.0.0.0 --port 8000  # AI service  :8000
+  && uvicorn app.main:app --host 127.0.0.1 --port 8000  # AI service  :8000
 npm run dev                                           # frontend    :5173
 ```
 
@@ -155,6 +161,15 @@ Docentra/
 └── dev.sh                  # one-command dev launcher
 ```
 
+## Privacy and security
+
+Docentra is built to be used by one person on their own computer.
+
+- **Your files stay local.** Documents, their search index and your conversations live in the Postgres database and the `backend/storage/` folder on your machine.
+- **Local-only by default.** The API, the AI service and Postgres listen on `127.0.0.1`, so other devices on your network cannot reach them.
+- **No accounts.** There is no login and no multi-user separation. Do not expose the services to a network or the internet as they are; anyone who can reach the API can read and delete your documents.
+- **What leaves your machine.** With Ollama, nothing. With a hosted provider, your question and the retrieved passages are sent to that provider using your own API key, which is stored only in your browser. With Web Search on, your question and a short keyword query go to DuckDuckGo and the pages it returns are fetched.
+
 ## Roadmap
 
 - [x] Multi-format upload and processing pipeline
@@ -164,15 +179,31 @@ Docentra/
 - [x] Per-claim citations with an in-app source viewer
 - [x] Collections for grouping documents
 - [x] Web search
-- [ ] Authentication and multiple users
-- [ ] Production deployment
+- [x] Storage management and bulk delete
+
+Docentra is a local, single-user tool by design. Accounts, multi-user workspaces
+and hosted deployment are not planned.
+
+## Contributing
+
+Bug reports and suggestions are welcome through
+[GitHub issues](https://github.com/DivaSatriaa/Docentra/issues). For larger
+changes, please open an issue first to discuss the idea.
+
+## Support
+
+Docentra is free and open source. If it saves you time, you can support its
+development:
+
+[![Buy me a coffee on Ko-fi](https://img.shields.io/badge/Buy_me_a_coffee-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/divasatria)
 
 ## About
 
-Docentra is an independent project, built from scratch to explore the
-intersection of software engineering, AI and product design: a frontend, a
-backend API, an AI service and a document pipeline working together like a real
-product rather than an isolated demo.
+Docentra is an independent project by [Diva Satria](https://github.com/DivaSatriaa),
+built from scratch to explore the intersection of software engineering, AI and
+product design: a frontend, a backend API, an AI service and a document pipeline
+working together like a real product rather than an isolated demo.
 
-> **Status:** active development, not production ready. Features and
-> architecture may still change.
+## License
+
+Released under the [MIT License](LICENSE).
